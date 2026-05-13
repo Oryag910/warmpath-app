@@ -41,3 +41,10 @@ yarn-error.log*
 next-env.d.ts
 
 /lib/generated/prisma
+
+# linkedin scrape session
+.linkedin-session.json
+.linkedin-browser/
+debug-*.png
+debug-*.json
+debug-*.html

@@ -145,7 +145,7 @@ Contact ${i + 1} (ID: ${c.id}):
 
   const response = await client.messages.create({
     model: 'claude-sonnet-4-6',
-    max_tokens: 2048,
+    max_tokens: Math.min(Math.max(contacts.length * 80, 1024), 8192),
     system: [{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
     messages: [
       {

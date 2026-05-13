@@ -35,6 +35,10 @@ export default function RankButton({ jobId, hasExistingPaths }: Props) {
         toast.error('Ranking failed')
         return
       }
+      const { rankedCount, totalContacts } = await res.json()
+      if (totalContacts > rankedCount) {
+        toast.success(`Ranked top ${rankedCount} of ${totalContacts} contacts`)
+      }
       router.push(`/jobs/${jobId}/pipeline`)
     } finally {
       setRanking(false)

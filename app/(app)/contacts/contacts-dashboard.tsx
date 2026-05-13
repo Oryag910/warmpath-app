@@ -113,6 +113,9 @@ export default function ContactsDashboard({ contacts }: Props) {
     }
   }
 
+  const withUrl = contacts.filter(c => c.linkedinUrl)
+  const enrichedCount = contacts.filter(c => c.enrichedAt).length
+
   return (
     <div className="space-y-6">
       <Card>
@@ -134,6 +137,24 @@ export default function ContactsDashboard({ contacts }: Props) {
           {importing && <p className="text-xs text-muted-foreground mt-2">Importing…</p>}
         </CardContent>
       </Card>
+
+      {withUrl.length > 0 && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium">Enrich from LinkedIn profiles</CardTitle>
+            <p className="text-sm text-muted-foreground">
+              Pull each connection&apos;s schools, past companies, and organizations off their LinkedIn profile so ranking can find alumni and shared-affiliation paths. Runs as a local script — {enrichedCount} of {withUrl.length} enriched.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <pre className="text-xs bg-muted rounded-md p-3 overflow-x-auto">npm run linkedin:login    # once — log in, press Enter
+npm run linkedin:enrich   # scrapes ~40 profiles per run; run again to continue</pre>
+            <p className="text-xs text-muted-foreground">
+              Drives your real LinkedIn session at a human pace. Re-run periodically; it picks up where it left off.
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader className="pb-3">
@@ -175,13 +196,19 @@ export default function ContactsDashboard({ contacts }: Props) {
           {contacts.length === 0 && (
             <p className="text-sm text-muted-foreground">No contacts yet. Import a LinkedIn CSV above to get started.</p>
           )}
-          {contacts.map(c => (
+          {contacts.map(c => {
+            const eduSchool = Array.isArray(c.educationHistory) && c.educationHistory[0]?.school
+            const orgCount = Array.isArray(c.organizations) ? c.organizations.length : 0
+            const enrichLine = [eduSchool, orgCount ? `${orgCount} org${orgCount !== 1 ? 's' : ''}` : null].filter(Boolean).join(' · ')
+            return (
             <div key={c.id} className="flex items-center justify-between p-3 rounded-lg border">
               <div>
                 <p className="text-sm font-medium">{c.name}</p>
                 <p className="text-xs text-muted-foreground">{c.title ?? ''}{c.company ? ` · ${c.company}` : ''}</p>
+                {c.enrichedAt && enrichLine && <p className="text-xs text-muted-foreground/70 mt-0.5">{enrichLine}</p>}
               </div>
               <div className="flex items-center gap-2">
+                {c.enrichedAt && <Badge variant="outline" className="text-xs">Enriched</Badge>}
                 <Badge variant="outline" className="text-xs capitalize">{c.relationshipStrength}</Badge>
                 <Badge variant="secondary" className="text-xs">{SOURCE_LABELS[c.source] ?? c.source}</Badge>
                 {confirmingDelete === c.id ? (
@@ -194,7 +221,8 @@ export default function ContactsDashboard({ contacts }: Props) {
                 )}
               </div>
             </div>
-          ))}
+            )
+          })}
         </CardContent>
       </Card>
     </div>

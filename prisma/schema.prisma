@@ -56,6 +56,13 @@ model Contact {
   source               String    @default("manual")
   educationHistory     Json?
   employmentHistory    Json?
+  headline             String?
+  location             String?
+  about                String?   @db.Text
+  organizations        Json?
+  skills               Json?
+  linkedinProfile      Json?
+  enrichedAt           DateTime?
   createdAt            DateTime  @default(now())
 
   user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
