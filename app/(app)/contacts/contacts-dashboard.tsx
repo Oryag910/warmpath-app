@@ -2,6 +2,7 @@
 
 import { useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import Papa from 'papaparse'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -19,6 +20,10 @@ const SOURCE_LABELS: Record<string, string> = {
   manual: 'Manual',
   linkedin_csv: 'LinkedIn',
   apollo: 'Apollo',
+}
+
+function isTrulyEnriched(c: any) {
+  return !!c.enrichedAt && !(c.linkedinProfile as any)?.unavailable
 }
 
 function parseLinkedInCsv(text: string): LinkedInRow[] {
@@ -114,7 +119,7 @@ export default function ContactsDashboard({ contacts }: Props) {
   }
 
   const withUrl = contacts.filter(c => c.linkedinUrl)
-  const enrichedCount = contacts.filter(c => c.enrichedAt).length
+  const enrichedCount = contacts.filter(c => isTrulyEnriched(c)).length
 
   return (
     <div className="space-y-6">
@@ -200,24 +205,25 @@ npm run linkedin:enrich   # scrapes ~40 profiles per run; run again to continue<
             const eduSchool = Array.isArray(c.educationHistory) && c.educationHistory[0]?.school
             const orgCount = Array.isArray(c.organizations) ? c.organizations.length : 0
             const enrichLine = [eduSchool, orgCount ? `${orgCount} org${orgCount !== 1 ? 's' : ''}` : null].filter(Boolean).join(' · ')
+            const enriched = isTrulyEnriched(c)
             return (
-            <div key={c.id} className="flex items-center justify-between p-3 rounded-lg border">
-              <div>
+            <div key={c.id} className="flex items-center justify-between p-3 rounded-lg border hover:bg-muted/30 transition-colors">
+              <Link href={`/contacts/${c.id}`} className="flex-1 min-w-0 cursor-pointer">
                 <p className="text-sm font-medium">{c.name}</p>
                 <p className="text-xs text-muted-foreground">{c.title ?? ''}{c.company ? ` · ${c.company}` : ''}</p>
-                {c.enrichedAt && enrichLine && <p className="text-xs text-muted-foreground/70 mt-0.5">{enrichLine}</p>}
-              </div>
-              <div className="flex items-center gap-2">
-                {c.enrichedAt && <Badge variant="outline" className="text-xs">Enriched</Badge>}
+                {enriched && enrichLine && <p className="text-xs text-muted-foreground/70 mt-0.5">{enrichLine}</p>}
+              </Link>
+              <div className="flex items-center gap-2 flex-shrink-0 ml-3">
+                {enriched && <Badge variant="outline" className="text-xs">Enriched</Badge>}
                 <Badge variant="outline" className="text-xs capitalize">{c.relationshipStrength}</Badge>
                 <Badge variant="secondary" className="text-xs">{SOURCE_LABELS[c.source] ?? c.source}</Badge>
                 {confirmingDelete === c.id ? (
                   <>
-                    <Button size="sm" variant="destructive" onClick={() => deleteContact(c.id)}>Confirm?</Button>
-                    <Button size="sm" variant="ghost" onClick={() => setConfirmingDelete(null)}>Cancel</Button>
+                    <Button size="sm" variant="destructive" onClick={e => { e.stopPropagation(); deleteContact(c.id) }}>Confirm?</Button>
+                    <Button size="sm" variant="ghost" onClick={e => { e.stopPropagation(); setConfirmingDelete(null) }}>Cancel</Button>
                   </>
                 ) : (
-                  <Button size="sm" variant="ghost" className="text-muted-foreground hover:text-destructive" onClick={() => setConfirmingDelete(c.id)}>Delete</Button>
+                  <Button size="sm" variant="ghost" className="text-muted-foreground hover:text-destructive" onClick={e => { e.stopPropagation(); setConfirmingDelete(c.id) }}>Delete</Button>
                 )}
               </div>
             </div>
