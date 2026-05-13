@@ -1,0 +1,114 @@
+generator client {
+  provider   = "prisma-client"
+  output     = "../lib/generated/prisma"
+  engineType = "library"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  createdAt DateTime @default(now())
+
+  schools       Json @default("[]")
+  pastCompanies Json @default("[]")
+  organizations Json @default("[]")
+
+  jobs     Job[]
+  contacts Contact[]
+}
+
+model Job {
+  id             String  @id @default(cuid())
+  userId         String
+  title          String
+  company        String
+  url            String?
+  rawDescription String  @db.Text
+
+  opportunityBrief      String? @db.Text
+  networkingStrategy    String? @db.Text
+  extractedRequirements Json?
+
+  status    String   @default("active")
+  createdAt DateTime @default(now())
+
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  warmPaths WarmPath[]
+}
+
+model Contact {
+  id                   String    @id @default(cuid())
+  userId               String
+  name                 String
+  title                String?
+  company              String?
+  linkedinUrl          String?
+  email                String?
+  relationshipStrength String    @default("weak")
+  schoolOverlap        Boolean   @default(false)
+  companyOverlap       Boolean   @default(false)
+  lastInteractionDate  DateTime?
+  notes                String?   @db.Text
+  source               String    @default("manual")
+  educationHistory     Json?
+  employmentHistory    Json?
+  createdAt            DateTime  @default(now())
+
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  warmPaths WarmPath[]
+
+  @@unique([userId, linkedinUrl])
+}
+
+model WarmPath {
+  id        String @id @default(cuid())
+  jobId     String
+  contactId String
+
+  relevanceScore    Float?
+  scoreReasoning    String? @db.Text
+  pathType          String?
+  recommendedAsk    String?
+  referralReadiness String?
+  nextAction        String? @db.Text
+
+  status    String   @default("not_started")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  job      Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  contact  Contact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  messages Message[]
+
+  @@unique([jobId, contactId])
+}
+
+model Message {
+  id           String    @id @default(cuid())
+  warmPathId   String
+  channel      String
+  messageType  String
+  body         String    @db.Text
+  status       String    @default("draft")
+  sentAt       DateTime?
+  followUpDate DateTime?
+  createdAt    DateTime  @default(now())
+
+  warmPath      WarmPath       @relation(fields: [warmPathId], references: [id], onDelete: Cascade)
+  replyAnalysis ReplyAnalysis?
+}
+
+model ReplyAnalysis {
+  id                String   @id @default(cuid())
+  messageId         String   @unique
+  replyText         String   @db.Text
+  sentiment         String?
+  suggestedNextStep String?  @db.Text
+  createdAt         DateTime @default(now())
+
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+}
