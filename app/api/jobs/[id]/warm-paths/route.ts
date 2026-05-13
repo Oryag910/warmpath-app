@@ -5,7 +5,18 @@ import { rankContacts } from '@/lib/claude'
 
 export const maxDuration = 60
 
-const MAX_RANK_CONTACTS = 75
+const MAX_COMPANY_CONTACTS = 30
+const MAX_OTHER_CONTACTS = 20
+
+// Generic words stripped when extracting distinctive words from a company name.
+// Prevents "technologies" in "Palantir Technologies" from matching every tech company.
+const GENERIC_WORDS = new Set([
+  'technologies', 'technology', 'solutions', 'services', 'group', 'inc',
+  'corp', 'llc', 'ltd', 'co', 'company', 'international', 'global',
+  'systems', 'software', 'digital', 'partners', 'consulting', 'enterprises',
+  'ventures', 'capital', 'labs', 'studio', 'studios', 'platforms', 'industries',
+  'management', 'health', 'healthcare', 'finance', 'financial', 'media',
+])
 
 export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   try {
@@ -32,7 +43,6 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
 }
 
 // POST /api/jobs/[id]/warm-paths — accepts { rankAll: true } or { contactIds: string[] }
-// Pre-filters to top MAX_RANK_CONTACTS by heuristic before sending to Claude
 export async function POST(request: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   try {
     const user = await requireUser()
@@ -63,12 +73,22 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ id: st
 
     const jobCompany = job.company.trim().toLowerCase()
 
+    // Extract distinctive words from the job company name so "Palantir Technologies"
+    // → ["palantir"], not ["palantir", "technologies"]. Computed once, used in hasCompanyMatch.
+    const jobDistinctiveWords = jobCompany
+      .split(/[\s&,./]+/)
+      .map(w => w.replace(/[^a-z0-9]/g, ''))
+      .filter(w => w.length > 2 && !GENERIC_WORDS.has(w))
+
     function hasCompanyMatch(c: any): boolean {
+      if (c.companyOverlap) return true
+      if (jobDistinctiveWords.length === 0) return false
       const cc = (c.company ?? '').trim().toLowerCase()
-      const pastCompanies = ((c.employmentHistory as any[]) ?? []).map((e: any) => (e.company ?? '').toLowerCase())
-      return c.companyOverlap
-        || (cc.length > 0 && (cc.includes(jobCompany) || jobCompany.includes(cc)))
-        || pastCompanies.some((p: string) => p.length > 0 && (p.includes(jobCompany) || jobCompany.includes(p)))
+      const pastCompanies = ((c.employmentHistory as any[]) ?? []).map(
+        (e: any) => (e.company ?? '').toLowerCase()
+      )
+      const nameMatches = (name: string) => name.length > 0 && jobDistinctiveWords.some(w => name.includes(w))
+      return nameMatches(cc) || pastCompanies.some(nameMatches)
     }
 
     function heuristicScore(c: any): number {
@@ -84,18 +104,19 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ id: st
     const totalContacts = allContacts.length
     let contacts: any[]
     if (rankAll) {
-      // Company-matched contacts always included; fill remaining slots by heuristic score
-      const companyMatched = allContacts.filter(c => hasCompanyMatch(c))
+      // Company-matched contacts fill the first pool (capped); rest fills the second pool by score
+      const companyMatched = allContacts.filter(c => hasCompanyMatch(c)).slice(0, MAX_COMPANY_CONTACTS)
+      const companyMatchedIds = new Set(companyMatched.map((c: any) => c.id))
       const rest = allContacts
-        .filter(c => !companyMatched.includes(c))
+        .filter(c => !companyMatchedIds.has(c.id))
         .sort((a, b) => heuristicScore(b) - heuristicScore(a))
-        .slice(0, Math.max(0, MAX_RANK_CONTACTS - companyMatched.length))
+        .slice(0, MAX_OTHER_CONTACTS)
       contacts = [...companyMatched, ...rest]
     } else {
       contacts = allContacts
     }
 
-    // Bulk-create WarmPath stubs for contacts being ranked (skip existing)
+    // Bulk-create WarmPath stubs (skip existing)
     await prisma.warmPath.createMany({
       data: contacts.map((c: any) => ({ jobId: id, contactId: c.id })),
       skipDuplicates: true,
@@ -123,10 +144,7 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ id: st
     const scores = await rankContacts(
       { title: job.title, company: job.company, rawDescription: job.rawDescription },
       (contacts as any[]).map((c: any) => {
-        const pastCompanies = ((c.employmentHistory as any[]) ?? []).map((e: any) => (e.company ?? '').toLowerCase())
-        const companyOverlap = c.companyOverlap
-          || (c.company ?? '').trim().toLowerCase() === jobCompany
-          || pastCompanies.some((p: string) => p.includes(jobCompany) || jobCompany.includes(p))
+        const companyOverlap = hasCompanyMatch(c)
         return {
           id: c.id,
           name: c.name,
@@ -142,20 +160,22 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ id: st
       })
     )
 
-    // Persist scores
-    for (const score of scores) {
-      await prisma.warmPath.update({
-        where: { jobId_contactId: { jobId: id, contactId: score.contactId } },
-        data: {
-          relevanceScore: score.relevanceScore,
-          scoreReasoning: score.scoreReasoning,
-          pathType: score.pathType,
-          recommendedAsk: score.recommendedAsk,
-          referralReadiness: score.referralReadiness,
-          nextAction: score.nextAction,
-        },
-      })
-    }
+    // Persist scores in parallel
+    await Promise.all(
+      scores.map(score =>
+        prisma.warmPath.update({
+          where: { jobId_contactId: { jobId: id, contactId: score.contactId } },
+          data: {
+            relevanceScore: score.relevanceScore,
+            scoreReasoning: score.scoreReasoning,
+            pathType: score.pathType,
+            recommendedAsk: score.recommendedAsk,
+            referralReadiness: score.referralReadiness,
+            nextAction: score.nextAction,
+          },
+        })
+      )
+    )
 
     return NextResponse.json({ rankedCount: contacts.length, totalContacts })
   } catch (err) {

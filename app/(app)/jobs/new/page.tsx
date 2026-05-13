@@ -71,7 +71,8 @@ export default function AddJobPage() {
     }
 
     const job = await res.json()
-    toast.success('Job added — generating opportunity brief…')
+    // Fire brief generation before navigating so it has a head start
+    fetch(`/api/jobs/${job.id}/brief`, { method: 'POST' })
     router.push(`/jobs/${job.id}`)
   }
 

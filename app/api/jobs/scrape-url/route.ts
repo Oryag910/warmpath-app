@@ -22,20 +22,25 @@ function htmlToText(html: string): string {
 }
 
 export async function POST(request: NextRequest) {
+  let url: string
   try {
-    await requireUser()
+    const [, body] = await Promise.all([requireUser(), request.json()])
+    url = body.url
   } catch {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const { url } = await request.json()
   if (!url || typeof url !== 'string' || !/^https?:\/\//i.test(url)) {
     return NextResponse.json({ ok: false, reason: 'Invalid URL' }, { status: 400 })
   }
 
   let html: string
   try {
-    const res = await fetch(url, { headers: { 'user-agent': UA, accept: 'text/html' }, redirect: 'follow' })
+    const res = await fetch(url, {
+      headers: { 'user-agent': UA, accept: 'text/html' },
+      redirect: 'follow',
+      signal: AbortSignal.timeout(10000),
+    })
     if (!res.ok) return NextResponse.json({ ok: false, reason: `Page returned ${res.status}` })
     html = await res.text()
   } catch {
