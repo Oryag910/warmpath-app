@@ -1,7 +1,6 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -25,15 +24,91 @@ const STATUS_NEXT_LABEL: Record<string, string> = {
   intro_requested: 'Mark connected',
 }
 
+interface UserProfile {
+  schools: any[]
+  pastCompanies: any[]
+  organizations: any[]
+}
+
 interface Props {
   jobId: string
   companySlug: string
   discovered: any[]
-  contacts: any[] // user's contacts for bridge selection
+  contacts: any[]
+  user: UserProfile
 }
 
-export default function DiscoveredConnections({ jobId, companySlug, discovered, contacts }: Props) {
-  const router = useRouter()
+function normStr(s: string) {
+  return s.toLowerCase().replace(/[^a-z0-9\s]/g, '').trim()
+}
+
+function toStringArray(val: any): string[] {
+  if (!Array.isArray(val)) return []
+  return val.map((v: any) => (typeof v === 'string' ? v : v?.name ?? '')).filter(Boolean)
+}
+
+function computeCommonalities(user: UserProfile, bridge: any): string[] {
+  const result: string[] = []
+
+  const userSchools = toStringArray(user.schools)
+  const bridgeSchools: string[] = Array.isArray(bridge.educationHistory)
+    ? bridge.educationHistory.map((e: any) => e.school ?? '').filter(Boolean)
+    : []
+  for (const us of userSchools) {
+    if (bridgeSchools.some(bs => normStr(bs).includes(normStr(us)) || normStr(us).includes(normStr(bs)))) {
+      result.push(us)
+    }
+  }
+
+  const userCompanies = toStringArray(user.pastCompanies)
+  const bridgeCompanies: string[] = Array.isArray(bridge.employmentHistory)
+    ? bridge.employmentHistory.map((e: any) => e.company ?? '').filter(Boolean)
+    : []
+  for (const uc of userCompanies) {
+    if (bridgeCompanies.some(bc => normStr(bc).includes(normStr(uc)) || normStr(uc).includes(normStr(bc)))) {
+      result.push(`ex-${uc}`)
+    }
+  }
+
+  const userOrgs = toStringArray(user.organizations)
+  const bridgeOrgs: string[] = Array.isArray(bridge.organizations)
+    ? bridge.organizations.map((o: any) => (typeof o === 'string' ? o : o?.name ?? '')).filter(Boolean)
+    : []
+  for (const uo of userOrgs) {
+    if (bridgeOrgs.some(bo => normStr(bo).includes(normStr(uo)) || normStr(uo).includes(normStr(bo)))) {
+      result.push(uo)
+    }
+  }
+
+  return result
+}
+
+function whySuggested(dc: any, bridge: any | null, commonalities: string[]): string {
+  if (!bridge) return `2nd-degree connection at ${dc.companySlug}`
+  const name = bridge.name
+  if (commonalities.length >= 2) {
+    return `2nd degree via ${name} — strong bridge (${commonalities.length} shared affiliations)`
+  }
+  if (commonalities.length === 1) {
+    return `2nd degree via ${name} — you share ${commonalities[0]} with your bridge contact`
+  }
+  if (bridge.schoolOverlap) {
+    return `2nd degree via ${name} — bridge contact shares your school background`
+  }
+  return `2nd degree via ${name} — your bridge contact knows this person at the company`
+}
+
+function actionableStep(dc: any, bridge: any | null): string {
+  const bridgeName = bridge?.name ?? 'your mutual connection'
+  switch (dc.status) {
+    case 'identified': return `Ask ${bridgeName} to introduce you to ${dc.name}`
+    case 'intro_requested': return `Follow up with ${bridgeName} in 5–7 days if no response`
+    case 'connected': return `Send ${dc.name} a personalized outreach message on LinkedIn`
+    default: return ''
+  }
+}
+
+export default function DiscoveredConnections({ jobId, companySlug, discovered, contacts, user }: Props) {
   const [items, setItems] = useState<any[]>(discovered)
   const [loadingId, setLoadingId] = useState<string | null>(null)
 
@@ -118,58 +193,91 @@ export default function DiscoveredConnections({ jobId, companySlug, discovered, 
         )}
 
         {active.length > 0 && (
-          <div className="space-y-2">
+          <div className="space-y-3">
             {active.map(dc => {
               const bridge = dc.mutualContact ?? contacts.find((c: any) => c.id === dc.mutualContactId)
+              const commonalities = bridge ? computeCommonalities(user, bridge) : []
+              const why = whySuggested(dc, bridge, commonalities)
+              const step = actionableStep(dc, bridge)
               const loading = loadingId === dc.id
+
               return (
-                <div key={dc.id} className="flex items-start justify-between gap-3 p-3 rounded-lg border">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <a
-                        href={dc.linkedinUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-sm font-medium hover:underline"
-                      >
-                        {dc.name} ↗
-                      </a>
-                      <Badge variant="outline" className="text-xs">{STATUS_LABELS[dc.status] ?? dc.status}</Badge>
-                    </div>
-                    {dc.title && (
-                      <p className="text-xs text-muted-foreground mt-0.5">{dc.title}</p>
-                    )}
-                    <div className="mt-1.5 flex items-center gap-2 flex-wrap">
-                      {bridge ? (
-                        <span className="text-xs text-muted-foreground">
-                          Bridge:{' '}
-                          <Link href={`/contacts/${bridge.id}`} className="hover:underline font-medium">
+                <div key={dc.id} className="p-4 rounded-lg border space-y-2.5">
+                  {/* Name + status */}
+                  <div className="flex items-start justify-between gap-3">
+                    <a
+                      href={dc.linkedinUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm font-medium hover:underline"
+                    >
+                      {dc.name} ↗
+                    </a>
+                    <Badge variant="outline" className="text-xs shrink-0">
+                      {STATUS_LABELS[dc.status] ?? dc.status}
+                    </Badge>
+                  </div>
+
+                  {/* Current role */}
+                  {dc.title && (
+                    <p className="text-xs text-muted-foreground">{dc.title}</p>
+                  )}
+
+                  {/* Bridge */}
+                  <div className="space-y-1">
+                    {bridge ? (
+                      <>
+                        <p className="text-xs">
+                          <span className="text-muted-foreground">Bridge: </span>
+                          <Link href={`/contacts/${bridge.id}`} className="font-medium hover:underline">
                             {bridge.name}
                           </Link>
-                          {' '}→{' '}
+                          {bridge.headline && (
+                            <span className="text-muted-foreground"> · {bridge.headline}</span>
+                          )}
+                          {' · '}
                           <Link
                             href={`/jobs/${jobId}/messages/${bridge.id}`}
-                            className="text-xs hover:underline text-blue-600"
+                            className="text-blue-600 hover:underline"
                           >
                             draft intro request →
                           </Link>
-                        </span>
-                      ) : (
-                        <select
-                          className="text-xs border rounded px-1.5 py-0.5 bg-background text-muted-foreground"
-                          defaultValue=""
-                          onChange={e => { if (e.target.value) updateBridge(dc, e.target.value) }}
-                          disabled={loading}
-                        >
-                          <option value="" disabled>Assign bridge contact…</option>
-                          {contacts.map((c: any) => (
-                            <option key={c.id} value={c.id}>{c.name}{c.company ? ` · ${c.company}` : ''}</option>
-                          ))}
-                        </select>
-                      )}
-                    </div>
+                        </p>
+                        {commonalities.length > 0 && (
+                          <p className="text-xs text-muted-foreground">
+                            You have in common: {commonalities.join(' · ')}
+                          </p>
+                        )}
+                      </>
+                    ) : (
+                      <select
+                        className="text-xs border rounded px-1.5 py-0.5 bg-background text-muted-foreground"
+                        defaultValue=""
+                        onChange={e => { if (e.target.value) updateBridge(dc, e.target.value) }}
+                        disabled={loading}
+                      >
+                        <option value="" disabled>Assign bridge contact…</option>
+                        {contacts.map((c: any) => (
+                          <option key={c.id} value={c.id}>{c.name}{c.company ? ` · ${c.company}` : ''}</option>
+                        ))}
+                      </select>
+                    )}
                   </div>
-                  <div className="flex items-center gap-1.5 flex-shrink-0">
+
+                  {/* Why suggested */}
+                  <p className="text-xs text-muted-foreground">
+                    <span className="font-medium text-foreground">Why: </span>{why}
+                  </p>
+
+                  {/* Next step */}
+                  {step && (
+                    <p className="text-xs">
+                      <span className="text-muted-foreground font-medium">Next: </span>{step}
+                    </p>
+                  )}
+
+                  {/* Actions */}
+                  <div className="flex items-center gap-1.5 pt-0.5">
                     {STATUS_NEXT[dc.status] && (
                       <Button
                         size="sm"

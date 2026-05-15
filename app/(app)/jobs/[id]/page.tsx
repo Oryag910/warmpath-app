@@ -24,7 +24,15 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
   const [discoveredContacts, userContacts] = await Promise.all([
     prisma.discoveredContact.findMany({
       where: { jobId: id },
-      include: { mutualContact: { select: { id: true, name: true, company: true } } },
+      include: {
+        mutualContact: {
+          select: {
+            id: true, name: true, company: true, headline: true,
+            linkedinUrl: true, schoolOverlap: true,
+            educationHistory: true, employmentHistory: true, organizations: true,
+          },
+        },
+      },
       orderBy: { discoveredAt: 'desc' },
     }),
     prisma.contact.findMany({
@@ -127,6 +135,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
         companySlug={job.company.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}
         discovered={discoveredContacts as any[]}
         contacts={userContacts as any[]}
+        user={{ schools: (user as any).schools ?? [], pastCompanies: (user as any).pastCompanies ?? [], organizations: (user as any).organizations ?? [] }}
       />
     </div>
   )
