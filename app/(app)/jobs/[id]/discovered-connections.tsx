@@ -84,22 +84,22 @@ function computeCommonalities(user: UserProfile, bridge: any): string[] {
 }
 
 function whySuggested(dc: any, bridge: any | null, commonalities: string[]): string {
-  if (!bridge) return `2nd-degree connection at ${dc.companySlug}`
-  const name = bridge.name
+  const name = bridge?.name ?? dc.mutualContactName
+  if (!name) return `2nd-degree connection at ${dc.companySlug}`
   if (commonalities.length >= 2) {
     return `2nd degree via ${name} — strong bridge (${commonalities.length} shared affiliations)`
   }
   if (commonalities.length === 1) {
     return `2nd degree via ${name} — you share ${commonalities[0]} with your bridge contact`
   }
-  if (bridge.schoolOverlap) {
+  if (bridge?.schoolOverlap) {
     return `2nd degree via ${name} — bridge contact shares your school background`
   }
   return `2nd degree via ${name} — your bridge contact knows this person at the company`
 }
 
 function actionableStep(dc: any, bridge: any | null): string {
-  const bridgeName = bridge?.name ?? 'your mutual connection'
+  const bridgeName = bridge?.name ?? dc.mutualContactName ?? 'your mutual connection'
   switch (dc.status) {
     case 'identified': return `Ask ${bridgeName} to introduce you to ${dc.name}`
     case 'intro_requested': return `Follow up with ${bridgeName} in 5–7 days if no response`
@@ -274,6 +274,25 @@ export default function DiscoveredConnections({ jobId, companySlug, discovered, 
                           </p>
                         )}
                       </>
+                    ) : dc.mutualContactName ? (
+                      <div className="space-y-1.5">
+                        <p className="text-xs">
+                          <span className="text-muted-foreground">Bridge: </span>
+                          <span className="font-medium">{dc.mutualContactName}</span>
+                          <span className="text-muted-foreground"> — not in your contacts</span>
+                        </p>
+                        <select
+                          className="text-xs border rounded px-1.5 py-0.5 bg-background text-muted-foreground"
+                          defaultValue=""
+                          onChange={e => { if (e.target.value) updateBridge(dc, e.target.value) }}
+                          disabled={loading}
+                        >
+                          <option value="" disabled>Assign a contact as bridge…</option>
+                          {contacts.map((c: any) => (
+                            <option key={c.id} value={c.id}>{c.name}{c.company ? ` · ${c.company}` : ''}</option>
+                          ))}
+                        </select>
+                      </div>
                     ) : (
                       <select
                         className="text-xs border rounded px-1.5 py-0.5 bg-background text-muted-foreground"
