@@ -136,6 +136,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
         discovered={discoveredContacts as any[]}
         contacts={userContacts as any[]}
         user={{ schools: (user as any).schools ?? [], pastCompanies: (user as any).pastCompanies ?? [], organizations: (user as any).organizations ?? [] }}
+        warmPathCount={job._count.warmPaths}
       />
     </div>
   )

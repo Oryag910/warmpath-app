@@ -36,10 +36,51 @@ interface Props {
   discovered: any[]
   contacts: any[]
   user: UserProfile
+  warmPathCount: number
 }
 
 function normStr(s: string) {
   return s.toLowerCase().replace(/[^a-z0-9\s]/g, '').trim()
+}
+
+function worksAtCompany(contact: any, companySlug: string): boolean {
+  if (!contact.company) return false
+  const slug = companySlug.toLowerCase().replace(/-/g, ' ')
+  const co = contact.company.toLowerCase().replace(/[^a-z0-9\s]/g, '').trim()
+  return co.includes(slug) || slug.includes(co)
+}
+
+function BridgeSelect({ contacts, companySlug, loading, onChange, placeholder }: {
+  contacts: any[]
+  companySlug: string
+  loading: boolean
+  onChange: (id: string) => void
+  placeholder: string
+}) {
+  const atCompany = contacts.filter(c => worksAtCompany(c, companySlug))
+  const others = contacts.filter(c => !worksAtCompany(c, companySlug))
+  return (
+    <select
+      className="text-xs border rounded px-1.5 py-0.5 bg-background text-muted-foreground"
+      defaultValue=""
+      onChange={e => { if (e.target.value) onChange(e.target.value) }}
+      disabled={loading}
+    >
+      <option value="" disabled>{placeholder}</option>
+      {atCompany.length > 0 && (
+        <optgroup label={`Works at ${companySlug}`}>
+          {atCompany.map((c: any) => (
+            <option key={c.id} value={c.id}>{c.name}{c.company ? ` · ${c.company}` : ''}</option>
+          ))}
+        </optgroup>
+      )}
+      <optgroup label={atCompany.length > 0 ? 'Other contacts' : 'All contacts'}>
+        {others.map((c: any) => (
+          <option key={c.id} value={c.id}>{c.name}{c.company ? ` · ${c.company}` : ''}</option>
+        ))}
+      </optgroup>
+    </select>
+  )
 }
 
 function toStringArray(val: any): string[] {
@@ -108,7 +149,7 @@ function actionableStep(dc: any, bridge: any | null): string {
   }
 }
 
-export default function DiscoveredConnections({ jobId, companySlug, discovered, contacts, user }: Props) {
+export default function DiscoveredConnections({ jobId, companySlug, discovered, contacts, user, warmPathCount }: Props) {
   const [items, setItems] = useState<any[]>(discovered)
   const [loadingId, setLoadingId] = useState<string | null>(null)
   const [reranking, setReranking] = useState(false)
@@ -187,17 +228,24 @@ export default function DiscoveredConnections({ jobId, companySlug, discovered, 
               People your contacts know who work here — discovered via LinkedIn.
             </p>
           </div>
-          {items.length > 0 && (
-            <Button
-              size="sm"
-              variant="outline"
-              className="text-xs h-7 shrink-0"
-              disabled={reranking}
-              onClick={rerank}
-            >
-              {reranking ? 'Re-ranking…' : 'Re-rank'}
-            </Button>
-          )}
+          <div className="flex flex-col items-end gap-1">
+            {items.length > 0 && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="text-xs h-7 shrink-0"
+                disabled={reranking}
+                onClick={rerank}
+              >
+                {reranking ? 'Re-ranking…' : 'Re-rank'}
+              </Button>
+            )}
+            {warmPathCount === 0 && items.length > 0 && (
+              <p className="text-xs text-muted-foreground text-right">
+                Rank contacts first to improve re-ranking.
+              </p>
+            )}
+          </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -281,30 +329,22 @@ export default function DiscoveredConnections({ jobId, companySlug, discovered, 
                           <span className="font-medium">{dc.mutualContactName}</span>
                           <span className="text-muted-foreground"> — not in your contacts</span>
                         </p>
-                        <select
-                          className="text-xs border rounded px-1.5 py-0.5 bg-background text-muted-foreground"
-                          defaultValue=""
-                          onChange={e => { if (e.target.value) updateBridge(dc, e.target.value) }}
-                          disabled={loading}
-                        >
-                          <option value="" disabled>Assign a contact as bridge…</option>
-                          {contacts.map((c: any) => (
-                            <option key={c.id} value={c.id}>{c.name}{c.company ? ` · ${c.company}` : ''}</option>
-                          ))}
-                        </select>
+                        <BridgeSelect
+                          contacts={contacts}
+                          companySlug={companySlug}
+                          loading={loading}
+                          onChange={id => updateBridge(dc, id)}
+                          placeholder="Assign a contact as bridge…"
+                        />
                       </div>
                     ) : (
-                      <select
-                        className="text-xs border rounded px-1.5 py-0.5 bg-background text-muted-foreground"
-                        defaultValue=""
-                        onChange={e => { if (e.target.value) updateBridge(dc, e.target.value) }}
-                        disabled={loading}
-                      >
-                        <option value="" disabled>Assign bridge contact…</option>
-                        {contacts.map((c: any) => (
-                          <option key={c.id} value={c.id}>{c.name}{c.company ? ` · ${c.company}` : ''}</option>
-                        ))}
-                      </select>
+                      <BridgeSelect
+                        contacts={contacts}
+                        companySlug={companySlug}
+                        loading={loading}
+                        onChange={id => updateBridge(dc, id)}
+                        placeholder="Assign bridge contact…"
+                      />
                     )}
                   </div>
 
