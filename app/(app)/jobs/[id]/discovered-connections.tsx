@@ -111,6 +111,20 @@ function actionableStep(dc: any, bridge: any | null): string {
 export default function DiscoveredConnections({ jobId, companySlug, discovered, contacts, user }: Props) {
   const [items, setItems] = useState<any[]>(discovered)
   const [loadingId, setLoadingId] = useState<string | null>(null)
+  const [reranking, setReranking] = useState(false)
+
+  async function rerank() {
+    setReranking(true)
+    try {
+      const res = await fetch(`/api/jobs/${jobId}/discovered-contacts`, { method: 'POST' })
+      if (!res.ok) { toast.error('Re-rank failed'); return }
+      const survivors = await res.json()
+      setItems(survivors)
+      toast.success(`Re-ranked — kept top ${survivors.filter((i: any) => i.status === 'identified').length} connections`)
+    } finally {
+      setReranking(false)
+    }
+  }
 
   async function updateStatus(dc: any, newStatus: string) {
     setLoadingId(dc.id)
@@ -173,6 +187,17 @@ export default function DiscoveredConnections({ jobId, companySlug, discovered, 
               People your contacts know who work here — discovered via LinkedIn.
             </p>
           </div>
+          {items.length > 0 && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="text-xs h-7 shrink-0"
+              disabled={reranking}
+              onClick={rerank}
+            >
+              {reranking ? 'Re-ranking…' : 'Re-rank'}
+            </Button>
+          )}
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
