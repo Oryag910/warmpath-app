@@ -120,7 +120,7 @@ export default function DiscoveredConnections({ jobId, companySlug, discovered, 
       if (!res.ok) { toast.error('Re-rank failed'); return }
       const survivors = await res.json()
       setItems(survivors)
-      toast.success(`Re-ranked — kept top ${survivors.filter((i: any) => i.status === 'identified').length} connections`)
+      toast.success(`Re-ranked — showing top ${survivors.filter((i: any) => i.status === 'identified').length} connections`)
     } finally {
       setReranking(false)
     }

@@ -2,7 +2,7 @@ import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth'
 import { NextResponse } from 'next/server'
 
-const TOP_N = 10
+const TOP_N = 5
 
 function norm(s: string) {
   return s.toLowerCase().replace(/[^a-z0-9]/g, '')
@@ -95,6 +95,7 @@ export async function POST(
     select: { schools: true, pastCompanies: true, organizations: true },
   })
 
+  // Fetch ALL discovered contacts, including the candidate pool
   const all = await prisma.discoveredContact.findMany({
     where: { jobId, userId: user.id },
     include: {
@@ -120,24 +121,43 @@ export async function POST(
     }))
     .sort((a, b) => b.score - a.score)
 
-  // Keep: top N + any already in-progress (not identified)
-  const topIds = new Set(scored.slice(0, TOP_N).map(({ dc }) => dc.id))
-  const keepIds = all
-    .filter(dc => topIds.has(dc.id) || dc.status !== 'identified')
-    .map(dc => dc.id)
+  // Contacts in active outreach are always preserved — exclude from rank competition
+  const preservedStatuses = new Set(['intro_requested', 'connected'])
+  const rankable = scored.filter(({ dc }) => !preservedStatuses.has(dc.status))
+  const newTopIds = new Set(rankable.slice(0, TOP_N).map(({ dc }) => dc.id))
 
-  await prisma.discoveredContact.deleteMany({
+  // Promote new top N to 'identified'
+  await prisma.discoveredContact.updateMany({
+    where: { jobId, userId: user.id, id: { in: [...newTopIds] } },
+    data: { status: 'identified' },
+  })
+
+  // Demote everything outside the new top N back to 'candidate' pool
+  await prisma.discoveredContact.updateMany({
     where: {
       jobId,
       userId: user.id,
-      status: 'identified',
-      id: { notIn: keepIds },
+      status: { in: ['identified', 'candidate'] },
+      id: { notIn: [...newTopIds] },
     },
+    data: { status: 'candidate' },
   })
 
-  const survivors = scored
-    .filter(({ dc }) => keepIds.includes(dc.id))
-    .map(({ dc }) => dc)
+  // Return non-candidate contacts so the UI can replace its list
+  const survivors = await prisma.discoveredContact.findMany({
+    where: { jobId, userId: user.id, status: { not: 'candidate' } },
+    include: {
+      mutualContact: {
+        select: {
+          id: true, name: true, company: true, headline: true,
+          linkedinUrl: true, schoolOverlap: true,
+          educationHistory: true, employmentHistory: true, organizations: true,
+          enrichedAt: true,
+        },
+      },
+    },
+    orderBy: { discoveredAt: 'desc' },
+  }) as any[]
 
   return NextResponse.json(survivors)
 }

@@ -23,7 +23,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
 
   const [discoveredContacts, userContacts] = await Promise.all([
     prisma.discoveredContact.findMany({
-      where: { jobId: id },
+      where: { jobId: id, status: { not: 'candidate' } },
       include: {
         mutualContact: {
           select: {
