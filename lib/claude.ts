@@ -145,7 +145,7 @@ Contact ${i + 1} (ID: ${c.id}):
 
   const response = await client.messages.create({
     model: 'claude-sonnet-4-6',
-    max_tokens: Math.min(Math.max(contacts.length * 80, 1024), 8192),
+    max_tokens: Math.min(Math.max(contacts.length * 300, 2048), 8192),
     system: [{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
     messages: [
       {
@@ -171,6 +171,18 @@ Path types:
 - alumni: Worked at target company in the past, can provide insider context
 - intro: Likely knows someone at target company or in the relevant function
 - weak: Limited connection, value is perspective/advice only
+
+Scoring calibration (apply strictly):
+- Currently works at the target company: score ≥ 0.75
+- Previously worked at the target company: score ≥ 0.55
+- School overlap AND works in same industry/function as the target role: score 0.40–0.54
+- School overlap with NO industry or role relevance to the target company: score ≤ 0.15
+- Shared affiliations that plausibly connect to the target company: score 0.30–0.50
+- No company overlap, no school overlap, no shared affiliations: score ≤ 0.10
+- 0.0 is valid. Use it freely for contacts with no path to this company.
+- NEVER infer indirect connections (e.g. "military → defense client") unless the contact's data explicitly states they work at or directly with the target company.
+- Relationship strength affects how warm the outreach is, NOT whether a path exists. A strong relationship with zero company relevance is still ≤ 0.15.
+HARD RULE: A score of 0.55 or above is ONLY valid when "Works/worked at target company: yes". If that field is "no", the score must be below 0.55 — no exceptions, regardless of industry, school overlap, relationship strength, or any other signal.
 
 Contacts:
 ${contactsBlock}

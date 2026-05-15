@@ -32,7 +32,8 @@ export default function RankButton({ jobId, hasExistingPaths }: Props) {
         return
       }
       if (!res.ok) {
-        toast.error('Ranking failed')
+        const body = await res.json().catch(() => ({}))
+        toast.error(body.detail ?? 'Ranking failed')
         return
       }
       const { rankedCount, totalContacts } = await res.json()

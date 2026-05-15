@@ -6,7 +6,7 @@ import { rankContacts } from '@/lib/claude'
 export const maxDuration = 60
 
 const MAX_COMPANY_CONTACTS = 30
-const MAX_OTHER_CONTACTS = 20
+const MAX_OTHER_CONTACTS = 5
 
 // Generic words stripped when extracting distinctive words from a company name.
 // Prevents "technologies" in "Palantir Technologies" from matching every tech company.
@@ -27,7 +27,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
     if (!job) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
     const warmPaths = await prisma.warmPath.findMany({
-      where: { jobId: id },
+      where: { jobId: id, relevanceScore: { gte: 0.55 } },
       include: { contact: true, messages: { orderBy: { createdAt: 'desc' }, take: 1 } },
       orderBy: [{ relevanceScore: 'desc' }, { createdAt: 'asc' }],
     })
@@ -102,26 +102,6 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ id: st
     }
 
     const totalContacts = allContacts.length
-    let contacts: any[]
-    if (rankAll) {
-      // Company-matched contacts fill the first pool (capped); rest fills the second pool by score
-      const companyMatched = allContacts.filter(c => hasCompanyMatch(c)).slice(0, MAX_COMPANY_CONTACTS)
-      const companyMatchedIds = new Set(companyMatched.map((c: any) => c.id))
-      const rest = allContacts
-        .filter(c => !companyMatchedIds.has(c.id))
-        .sort((a, b) => heuristicScore(b) - heuristicScore(a))
-        .slice(0, MAX_OTHER_CONTACTS)
-      contacts = [...companyMatched, ...rest]
-    } else {
-      contacts = allContacts
-    }
-
-    // Bulk-create WarmPath stubs (skip existing)
-    await prisma.warmPath.createMany({
-      data: contacts.map((c: any) => ({ jobId: id, contactId: c.id })),
-      skipDuplicates: true,
-    })
-
     const userSchools = ((fullUser?.schools as any[]) ?? []).map((s: any) => (s.name ?? '').toLowerCase())
     const userOrgs = ((fullUser?.organizations as any[]) ?? []).map((o: string) => o.toLowerCase())
 
@@ -140,6 +120,37 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ id: st
       }
       return parts.length ? parts.join('; ') : null
     }
+
+    let contacts: any[]
+    if (rankAll) {
+      // Company-matched contacts fill the first pool (capped); rest fills the second pool by score
+      const companyMatched = allContacts.filter(c => hasCompanyMatch(c)).slice(0, MAX_COMPANY_CONTACTS)
+      const companyMatchedIds = new Set(companyMatched.map((c: any) => c.id))
+      const rest = allContacts
+        .filter(c => {
+          if (companyMatchedIds.has(c.id)) return false
+          // Require at least one enrichment-based signal — school overlap alone isn't enough
+          return buildSharedAffiliations(c) || heuristicScore(c) >= 13
+        })
+        .sort((a, b) => heuristicScore(b) - heuristicScore(a))
+        .slice(0, MAX_OTHER_CONTACTS)
+      contacts = [...companyMatched, ...rest]
+    } else {
+      contacts = allContacts
+    }
+
+    // On a full re-rank, wipe stale not_started rows so old scores don't bleed through
+    if (rankAll) {
+      await prisma.warmPath.deleteMany({
+        where: { jobId: id, status: 'not_started' },
+      })
+    }
+
+    // Bulk-create WarmPath stubs (skip existing)
+    await prisma.warmPath.createMany({
+      data: contacts.map((c: any) => ({ jobId: id, contactId: c.id })),
+      skipDuplicates: true,
+    })
 
     const scores = await rankContacts(
       { title: job.title, company: job.company, rawDescription: job.rawDescription },
@@ -160,9 +171,12 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ id: st
       })
     )
 
-    // Persist scores in parallel
-    await Promise.all(
-      scores.map(score =>
+    // Persist scores; delete WarmPath rows that fall below the relevance threshold
+    const toKeep = scores.filter(s => s.relevanceScore >= 0.55)
+    const toDrop = scores.filter(s => s.relevanceScore < 0.55).map(s => s.contactId)
+
+    await Promise.all([
+      ...toKeep.map(score =>
         prisma.warmPath.update({
           where: { jobId_contactId: { jobId: id, contactId: score.contactId } },
           data: {
@@ -174,8 +188,13 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ id: st
             nextAction: score.nextAction,
           },
         })
-      )
-    )
+      ),
+      toDrop.length > 0
+        ? prisma.warmPath.deleteMany({
+            where: { jobId: id, contactId: { in: toDrop } },
+          })
+        : Promise.resolve(),
+    ])
 
     return NextResponse.json({ rankedCount: contacts.length, totalContacts })
   } catch (err) {
@@ -183,6 +202,7 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ id: st
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
     console.error(err)
-    return NextResponse.json({ error: 'Ranking failed' }, { status: 500 })
+    const msg = err instanceof Error ? err.message : String(err)
+    return NextResponse.json({ error: 'Ranking failed', detail: msg }, { status: 500 })
   }
 }
