@@ -42,6 +42,9 @@ next-env.d.ts
 
 /lib/generated/prisma
 
+# claude local settings (personal overrides, not for the team)
+.claude/settings.local.json
+
 # linkedin scrape session
 .linkedin-session.json
 .linkedin-browser/
