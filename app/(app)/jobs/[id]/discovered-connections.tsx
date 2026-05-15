@@ -197,15 +197,6 @@ export default function DiscoveredConnections({ jobId, companySlug, discovered, 
           </div>
         )}
 
-        {active.length > 0 && items.length === 0 && (
-          <div className="pt-2 border-t">
-            <p className="text-xs text-muted-foreground mb-1">Re-run to find more:</p>
-            <pre className="text-xs bg-muted rounded-md p-2 overflow-x-auto">
-              {`COMPANY=${companySlug} JOB_ID=${jobId} npm run linkedin:discover`}
-            </pre>
-          </div>
-        )}
-
         {active.length > 0 && (
           <div className="pt-2 border-t">
             <p className="text-xs text-muted-foreground mb-1">Re-run to discover more:</p>

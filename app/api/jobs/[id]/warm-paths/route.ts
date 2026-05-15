@@ -202,7 +202,6 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ id: st
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
     console.error(err)
-    const msg = err instanceof Error ? err.message : String(err)
-    return NextResponse.json({ error: 'Ranking failed', detail: msg }, { status: 500 })
+    return NextResponse.json({ error: 'Ranking failed' }, { status: 500 })
   }
 }
