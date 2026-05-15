@@ -17,8 +17,9 @@ model User {
   pastCompanies Json @default("[]")
   organizations Json @default("[]")
 
-  jobs     Job[]
-  contacts Contact[]
+  jobs               Job[]
+  contacts           Contact[]
+  discoveredContacts DiscoveredContact[]
 }
 
 model Job {
@@ -36,8 +37,9 @@ model Job {
   status    String   @default("active")
   createdAt DateTime @default(now())
 
-  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  warmPaths WarmPath[]
+  user               User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  warmPaths          WarmPath[]
+  discoveredContacts DiscoveredContact[]
 }
 
 model Contact {
@@ -65,8 +67,9 @@ model Contact {
   enrichedAt           DateTime?
   createdAt            DateTime  @default(now())
 
-  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  warmPaths WarmPath[]
+  user               User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  warmPaths          WarmPath[]
+  discoveredContacts DiscoveredContact[] @relation("MutualContactPaths")
 
   @@unique([userId, linkedinUrl])
 }
@@ -118,4 +121,24 @@ model ReplyAnalysis {
   createdAt         DateTime @default(now())
 
   message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+}
+
+model DiscoveredContact {
+  id                String   @id @default(cuid())
+  userId            String
+  jobId             String
+  companySlug       String
+  name              String
+  title             String?
+  linkedinUrl       String
+  mutualContactId   String?
+  mutualContactName String?
+  status            String   @default("identified")
+  discoveredAt      DateTime @default(now())
+
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  job           Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  mutualContact Contact? @relation("MutualContactPaths", fields: [mutualContactId], references: [id], onDelete: SetNull)
+
+  @@unique([jobId, linkedinUrl])
 }

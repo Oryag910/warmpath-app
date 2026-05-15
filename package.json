@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "linkedin:login": "tsx scripts/linkedin-login.ts",
-    "linkedin:enrich": "tsx scripts/enrich-linkedin.ts"
+    "linkedin:enrich": "tsx scripts/enrich-linkedin.ts",
+    "linkedin:discover": "tsx scripts/discover-connections.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.95.2",

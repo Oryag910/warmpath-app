@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import OpportunityBriefLoader from './brief-loader'
 import RankButton from './rank-button'
+import DiscoveredConnections from './discovered-connections'
 
 export default async function JobPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -19,6 +20,19 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
   })
 
   if (!job) notFound()
+
+  const [discoveredContacts, userContacts] = await Promise.all([
+    prisma.discoveredContact.findMany({
+      where: { jobId: id },
+      include: { mutualContact: { select: { id: true, name: true, company: true } } },
+      orderBy: { discoveredAt: 'desc' },
+    }),
+    prisma.contact.findMany({
+      where: { userId: user.id },
+      select: { id: true, name: true, company: true },
+      orderBy: { name: 'asc' },
+    }),
+  ])
 
   const requirements = Array.isArray(job.extractedRequirements)
     ? (job.extractedRequirements as string[])
@@ -107,6 +121,13 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
           <RankButton jobId={id} hasExistingPaths={job._count.warmPaths > 0} />
         </div>
       </div>
+
+      <DiscoveredConnections
+        jobId={id}
+        companySlug={job.company.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}
+        discovered={discoveredContacts as any[]}
+        contacts={userContacts as any[]}
+      />
     </div>
   )
 }
