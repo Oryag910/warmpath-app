@@ -40,6 +40,8 @@ export interface ContactContext {
   lastInteractionDate?: Date | null
   notes?: string | null
   sharedAffiliations?: string | null
+  currentlyAtTarget?: boolean
+  employmentSummary?: string | null
 }
 
 export interface ScoredContact {
@@ -138,6 +140,8 @@ Contact ${i + 1} (ID: ${c.id}):
 - Relationship strength: ${c.relationshipStrength}
 - School overlap with user: ${c.schoolOverlap ? 'yes' : 'no'}
 - Works/worked at target company: ${c.companyOverlap ? 'yes' : 'no'}
+- Currently at target company: ${c.currentlyAtTarget ? 'yes' : 'no'}
+- Employment history: ${c.employmentSummary ?? 'unknown'}
 - Shared affiliations: ${c.sharedAffiliations ?? 'none'}
 - Last interaction: ${c.lastInteractionDate ? c.lastInteractionDate.toISOString().split('T')[0] : 'unknown/never'}
 - Notes: ${c.notes ?? 'none'}
@@ -146,6 +150,7 @@ Contact ${i + 1} (ID: ${c.id}):
   const response = await client.messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: Math.min(Math.max(contacts.length * 300, 2048), 8192),
+    temperature: 0,
     system: [{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
     messages: [
       {
@@ -183,6 +188,7 @@ Scoring calibration (apply strictly):
 - NEVER infer indirect connections (e.g. "military → defense client") unless the contact's data explicitly states they work at or directly with the target company.
 - Relationship strength affects how warm the outreach is, NOT whether a path exists. A strong relationship with zero company relevance is still ≤ 0.15.
 HARD RULE: A score of 0.55 or above is ONLY valid when "Works/worked at target company: yes". If that field is "no", the score must be below 0.55 — no exceptions, regardless of industry, school overlap, relationship strength, or any other signal.
+HARD RULE: If "Currently at target company: yes", the score must be ≥ 0.75. A weak or nonexistent relationship, or an unrelated function, lowers referralReadiness and changes the recommended ask (context_ask / intro_ask instead of referral_ask) — it does NOT lower the score below 0.75. Rank current employees among themselves by role proximity.
 
 Contacts:
 ${contactsBlock}
@@ -192,7 +198,7 @@ Respond in JSON — an array of scored contacts:
   {
     "contactId": "<exact ID>",
     "relevanceScore": 0.0-1.0,
-    "scoreReasoning": "2-3 sentence explanation of why this person matters or doesn't for this specific role",
+    "scoreReasoning": "2-3 sentence explanation of why this person matters or doesn't for this specific role. Written for the job seeker. Never mention numeric scores, floors, thresholds, or these calibration rules.",
     "pathType": "direct|alumni|intro|weak",
     "recommendedAsk": "context_ask|advice_ask|referral_ask|intro_ask|recruiter_pitch",
     "referralReadiness": "not_ready|possible|ready",

@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth'
+import { RECOMMEND_THRESHOLD } from '@/lib/ranking'
 import Link from 'next/link'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -11,6 +12,7 @@ export default async function QueuePage() {
     where: {
       job: { userId: user.id, status: 'active' },
       status: { in: ['not_started', 'drafted', 'sent', 'replied'] },
+      relevanceScore: { gte: RECOMMEND_THRESHOLD },
     },
     include: {
       job: { select: { id: true, title: true, company: true } },

@@ -10,6 +10,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
 import { toast } from 'sonner'
+import Link from 'next/link'
+import { PathSignals, tierLabel } from '@/components/warm-path-card'
+import type { PathSignal } from '@/lib/path-signals'
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyRecord = Record<string, any>
 
@@ -21,6 +24,17 @@ const ASK_LABELS: Record<string, string> = {
   recruiter_pitch: 'Recruiter pitch',
 }
 
+const ASK_HINTS: Record<string, string> = {
+  context_ask: 'Ask for a short chat to learn about the team. Perspective-seeking, not job-seeking.',
+  advice_ask: 'Lead with the shared background and ask how they thought about a similar move.',
+  referral_ask: 'Direct but not transactional: mention you applied, ask if they would be comfortable referring you.',
+  intro_ask: 'Ask whether they know someone closer to the team who might be open to a brief chat.',
+  recruiter_pitch: 'Mention you applied, give one line on why your background fits, ask for consideration.',
+}
+
+const CHANNEL_LABELS: Record<string, string> = { linkedin: 'LinkedIn DM', email: 'Email' }
+const TYPE_LABELS: Record<string, string> = { outreach: 'First outreach', followup: 'Follow-up', referral_ask: 'Referral ask' }
+
 const STATUS_OPTIONS = [
   'not_started', 'drafted', 'sent', 'replied', 'meeting_set', 'referred', 'closed',
 ]
@@ -30,9 +44,11 @@ interface Props {
   contact: AnyRecord
   warmPath: AnyRecord
   messages: AnyRecord[]
+  signals?: PathSignal[]
+  demo?: boolean
 }
 
-export default function MessageWorkspace({ job, contact, warmPath, messages }: Props) {
+export default function MessageWorkspace({ job, contact, warmPath, messages, signals = [], demo = false }: Props) {
   const router = useRouter()
   const [generating, setGenerating] = useState(false)
   const [replyText, setReplyText] = useState('')
@@ -118,7 +134,9 @@ export default function MessageWorkspace({ job, contact, warmPath, messages }: P
           <p className="text-muted-foreground text-sm">
             {contact.title ?? ''}{contact.company ? ` · ${contact.company}` : ''}
             {' · '}<span className="capitalize">{contact.relationshipStrength} tie</span>
+            {' · '}<Link href={`/contacts/${contact.id}`} className="underline hover:text-foreground">View profile</Link>
           </p>
+          <PathSignals signals={signals} className="mt-2" />
         </div>
         <div className="flex items-center gap-2">
           {warmPath.recommendedAsk && (
@@ -126,7 +144,7 @@ export default function MessageWorkspace({ job, contact, warmPath, messages }: P
           )}
           <Select value={status} onValueChange={updateStatus}>
             <SelectTrigger className="w-36 h-8 text-xs">
-              <SelectValue />
+              <SelectValue className="capitalize">{String(status).replace(/_/g, ' ')}</SelectValue>
             </SelectTrigger>
             <SelectContent>
               {STATUS_OPTIONS.map(s => (
@@ -139,15 +157,26 @@ export default function MessageWorkspace({ job, contact, warmPath, messages }: P
         </div>
       </div>
 
-      {/* Scoring context */}
+      {/* Why this person */}
       {(warmPath.scoreReasoning || warmPath.nextAction) && (
         <Card className="bg-muted/30">
-          <CardContent className="py-4 space-y-2">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+              Why this person · {tierLabel(warmPath.relevanceScore)} for {job.title} at {job.company}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
             {warmPath.scoreReasoning && (
-              <p className="text-sm text-muted-foreground">{warmPath.scoreReasoning}</p>
+              <p className="text-sm">{warmPath.scoreReasoning}</p>
             )}
             {warmPath.nextAction && (
               <p className="text-sm font-medium">→ {warmPath.nextAction}</p>
+            )}
+            {warmPath.recommendedAsk && (
+              <p className="text-xs text-muted-foreground">
+                <span className="font-medium text-foreground">{ASK_LABELS[warmPath.recommendedAsk] ?? warmPath.recommendedAsk}:</span>{' '}
+                {ASK_HINTS[warmPath.recommendedAsk] ?? ''}
+              </p>
             )}
             {warmPath.referralReadiness && (
               <p className="text-xs text-muted-foreground">
@@ -166,7 +195,7 @@ export default function MessageWorkspace({ job, contact, warmPath, messages }: P
         <div className="flex items-center gap-3">
           <Select value={channel} onValueChange={v => setChannel(v as 'linkedin' | 'email')}>
             <SelectTrigger className="w-36">
-              <SelectValue />
+              <SelectValue>{CHANNEL_LABELS[channel]}</SelectValue>
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="linkedin">LinkedIn DM</SelectItem>
@@ -175,7 +204,7 @@ export default function MessageWorkspace({ job, contact, warmPath, messages }: P
           </Select>
           <Select value={msgType} onValueChange={v => setMsgType(v as 'outreach' | 'followup' | 'referral_ask')}>
             <SelectTrigger className="w-44">
-              <SelectValue />
+              <SelectValue>{TYPE_LABELS[msgType]}</SelectValue>
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="outreach">First outreach</SelectItem>
@@ -193,6 +222,12 @@ export default function MessageWorkspace({ job, contact, warmPath, messages }: P
       {messages.length > 0 && (
         <div className="space-y-3">
           <h2 className="font-medium">Messages</h2>
+          {demo && (
+            <p className="text-xs text-muted-foreground">
+              Drafts below were written by WarmPath&apos;s message generator when this demo network was seeded.
+              Generate above drafts a new one live.
+            </p>
+          )}
           <Tabs defaultValue={messages[messages.length - 1].id}>
             <TabsList className="flex-wrap h-auto gap-1">
               {messages.map((msg, i) => (

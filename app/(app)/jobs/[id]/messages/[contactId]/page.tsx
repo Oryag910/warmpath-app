@@ -3,6 +3,8 @@ import { requireUser } from '@/lib/auth'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import MessageWorkspace from './message-workspace'
+import { isDemoUser } from '@/lib/demo'
+import { pathSignals } from '@/lib/ranking'
 
 export default async function MessagePage({ params }: { params: Promise<{ id: string; contactId: string }> }) {
   const { id, contactId } = await params
@@ -23,6 +25,9 @@ export default async function MessagePage({ params }: { params: Promise<{ id: st
 
   if (!warmPath) notFound()
 
+  const signals = pathSignals(contact, { company: job.company }, user)
+  const demo = isDemoUser(user)
+
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -35,7 +40,7 @@ export default async function MessagePage({ params }: { params: Promise<{ id: st
         <span>{contact.name}</span>
       </div>
 
-      <MessageWorkspace job={job} contact={contact} warmPath={warmPath} messages={warmPath.messages} />
+      <MessageWorkspace job={job} contact={contact} warmPath={warmPath} messages={warmPath.messages} signals={signals} demo={demo} />
     </div>
   )
 }

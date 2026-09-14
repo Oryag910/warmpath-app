@@ -4,11 +4,13 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "prisma generate && next build",
     "start": "next start",
     "linkedin:login": "tsx scripts/linkedin-login.ts",
     "linkedin:enrich": "tsx scripts/enrich-linkedin.ts",
-    "linkedin:discover": "tsx scripts/discover-connections.ts"
+    "linkedin:discover": "tsx scripts/discover-connections.ts",
+    "postinstall": "prisma generate",
+    "seed:demo": "tsx scripts/seed-demo.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.95.2",

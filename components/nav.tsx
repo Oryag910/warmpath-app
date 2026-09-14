@@ -3,14 +3,14 @@
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
-import { Button } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
 
-export default function Nav() {
+export default function Nav({ demo = false }: { demo?: boolean }) {
   const pathname = usePathname()
   const router = useRouter()
-  const supabase = createClient()
 
   async function signOut() {
+    const supabase = createClient()
     await supabase.auth.signOut()
     router.push('/login')
     router.refresh()
@@ -40,7 +40,11 @@ export default function Nav() {
             ))}
           </nav>
         </div>
-        <Button variant="ghost" size="sm" onClick={signOut}>Sign out</Button>
+        {demo ? (
+          <a href="/demo/exit" className={buttonVariants({ variant: 'ghost', size: 'sm' })}>Exit demo</a>
+        ) : (
+          <Button variant="ghost" size="sm" onClick={signOut}>Sign out</Button>
+        )}
       </div>
     </header>
   )

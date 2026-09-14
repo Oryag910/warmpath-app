@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth'
+import { RECOMMEND_THRESHOLD } from '@/lib/path-signals'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { buttonVariants } from '@/components/ui/button'
@@ -38,7 +39,7 @@ export default async function PipelinePage({ params }: { params: Promise<{ id: s
   if (!job) notFound()
 
   const warmPaths = (await prisma.warmPath.findMany({
-    where: { jobId: id },
+    where: { jobId: id, relevanceScore: { gte: RECOMMEND_THRESHOLD } },
     include: { contact: true, messages: { orderBy: { createdAt: 'desc' }, take: 1 } },
     orderBy: [{ relevanceScore: 'desc' }, { createdAt: 'asc' }],
   })) as any[]
