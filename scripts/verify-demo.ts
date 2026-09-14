@@ -77,6 +77,7 @@ async function main() {
   const idx = names.map(n => t.indexOf(n))
   check(idx.every(i => i >= 0) && idx[0] < idx[1] && idx[1] < idx[2] && idx[2] < idx[3], 'insiders ranked above alumni path')
   check(!/Rachel Goldberg|Omar Haddad|Nina Petrova/.test(t), 'irrelevant contacts not shown as paths')
+  check(!/\bc\d{1,2}\b/.test(t), 'no short contact ids leaked into explanations')
   await snap('job')
 
   console.log('Weaker signals')

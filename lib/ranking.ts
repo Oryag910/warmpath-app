@@ -77,9 +77,18 @@ export async function rankJob(
     }))
   )
 
+  const nameByShort = new Map(contacts.map((c, i) => [`c${i + 1}`, c.name as string]))
+  // The model occasionally refers to other contacts by their short id inside prose — restore names
+  const restoreNames = (text: string | undefined) =>
+    (text ?? '').replace(/\bc(\d{1,2})\b/g, (m, n) => nameByShort.get(`c${n}`) ?? m)
   const scores = rawScores
     .filter(s => shortToId.has(s.contactId))
-    .map(s => ({ ...s, contactId: shortToId.get(s.contactId)! }))
+    .map(s => ({
+      ...s,
+      contactId: shortToId.get(s.contactId)!,
+      scoreReasoning: restoreNames(s.scoreReasoning),
+      nextAction: restoreNames(s.nextAction),
+    }))
   if (scores.length !== rawScores.length) {
     console.warn(`rankJob: ${rawScores.length - scores.length} scored contact(s) had unknown ids and were dropped`)
   }

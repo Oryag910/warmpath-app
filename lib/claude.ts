@@ -202,7 +202,7 @@ Respond in JSON — an array of scored contacts:
     "pathType": "direct|alumni|intro|weak",
     "recommendedAsk": "context_ask|advice_ask|referral_ask|intro_ask|recruiter_pitch",
     "referralReadiness": "not_ready|possible|ready",
-    "nextAction": "One specific sentence: what to do first with this person"
+    "nextAction": "One specific sentence: what to do first with this person. Refer to other contacts by name, never by ID."
   }
 ]
 
