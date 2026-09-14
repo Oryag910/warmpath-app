@@ -35,7 +35,7 @@ AI fields are deliberately nullable and populated on demand (user clicks "rank" 
 ## Key flows
 
 - **Create job** — `/jobs/new`. Optional URL → `POST /api/jobs/scrape-url` fetches the page, strips HTML to text, calls `extractJobFromHtml` (Claude) → `{ title, company, rawDescription }`. JS-heavy / bot-blocked pages return `{ ok: false, reason }` and the form falls back to manual entry. Then `POST /api/jobs` creates the Job; the opportunity brief is generated separately (`/api/jobs/[id]/brief`, surfaced by `brief-loader.tsx`).
-- **Rank contacts → create WarmPaths** — `/jobs/[id]/contacts` → `POST /api/jobs/[id]/warm-paths`. This route: (a) recomputes `companyOverlap` dynamically — a contact whose `company` *or any `employmentHistory` entry* matches the job's company (case-insensitive) counts as an insider even if the stored flag is false; (b) builds a `sharedAffiliations` string per contact (school + organization overlap vs the user's profile); (c) calls `rankContacts` once for the whole list; (d) upserts a WarmPath per contact with the returned scores.
+- **Rank contacts → create WarmPaths** — "Rank my connections" on the job page → `POST /api/jobs/[id]/warm-paths {rankAll:true}` → `rankJob()` in `lib/ranking.ts`. Stage 1 (deterministic, `lib/path-signals.ts`): company match via distinctive words on `company` + any `employmentHistory` entry (≤30), plus ≤5 contacts with a school/org affiliation shared with the user's profile, ordered by a heuristic. Stage 2: one `rankContacts` call over that pool (short index ids, employment summary + "currently at target" flag included in the prompt). Stage 3 invariants: current employees floored to 0.55, former employees to 0.30, every scored candidate persisted so the job page can show "weaker signals considered but not recommended"; the transaction that wipes stale `not_started` rows runs only after scoring succeeds. The job page renders the ranked list with `pathSignals()` chips and a funnel line (screened → scored → recommended).
 - **Draft message** — `/jobs/[id]/messages/[contactId]` → `generateMessage` with channel + ask-type guidance baked into the prompt. Channel constraints: LinkedIn DM < 150 words; email gets a `Subject:` first line, body < 200 words.
 - **Follow-up** — `generateFollowup` (< 60 words, no "just following up"). The `/queue` page lists WarmPaths in actionable statuses across all jobs, sorted by score.
 - **Reply handling** — paste a reply → `interpretReply` returns `{ sentiment, suggestedNextStep }`, stored as `ReplyAnalysis` via `/api/replies`.
@@ -56,6 +56,10 @@ One module, one shared `SYSTEM_PROMPT` (the WarmPath persona + hard tone rules +
 **Prompt caching:** `SYSTEM_PROMPT` is sent with `cache_control: ephemeral` on every call. `rankContacts` additionally caches the job title line and the job description as separate anchors, so scoring many contacts for the same job reuses that prefix. JSON responses are parsed after stripping ``` fences.
 
 See `docs/prompts.md` for the full prompt text and shapes.
+
+## Demo mode (public recruiter demo)
+
+`proxy.ts` rewrites an anonymous `/` to `app/landing/page.tsx`. `GET /demo` (`app/demo/route.ts`) calls `createDemoSandbox()` in `lib/demo.ts`: it clones the seeded template user (1,100 synthetic contacts from `lib/demo/data.ts`, the Stripe internship job, the WarmPaths and drafts produced by the real pipeline in `scripts/seed-demo.ts`) into a fresh per-visitor user, sets the HMAC-signed `wp_demo` cookie, and redirects to the job page. `requireUser()` accepts that cookie only for users on the `demo.warmpath.local` domain, so a forged cookie can at most reach another sandbox. Stale sandboxes (>24h) are deleted on the next demo start. Live Claude calls still work inside a sandbox (Generate, Re-rank); the seeded drafts are labelled as pre-generated in the workspace.
 
 ## Supabase: server vs. client
 

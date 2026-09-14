@@ -4,9 +4,16 @@ import ContactsDashboard from './contacts-dashboard'
 
 export default async function ContactsPage() {
   const user = await requireUser()
+  // Only the fields the dashboard renders — a large network serialized with every JSON column
+  // (skills, full scraped profile, …) is multiple MB of HTML
   const contacts = await prisma.contact.findMany({
     where: { userId: user.id },
     orderBy: { name: 'asc' },
+    select: {
+      id: true, name: true, title: true, company: true, linkedinUrl: true, source: true,
+      relationshipStrength: true, schoolOverlap: true, companyOverlap: true, enrichedAt: true,
+      educationHistory: true, organizations: true, linkedinProfile: true,
+    },
   })
 
   return (

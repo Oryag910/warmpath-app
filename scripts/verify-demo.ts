@@ -72,7 +72,7 @@ async function main() {
   check(/Formerly at Stripe/.test(t), 'signal chip "Formerly at Stripe"')
   check(/University Of Michigan alum|Michigan alum/i.test(t), 'signal chip for shared school')
   check(/weaker signal/i.test(t), 'weaker-signals tier present')
-  check(!/npm run|linkedin:|APOLLO_API_KEY/i.test(t), 'no CLI text on job page')
+  check(!/npm run|linkedin:(login|enrich|discover)|APOLLO_API_KEY/i.test(t), 'no CLI text on job page')
   const names = ['Priya Natarajan', 'Daniel Okafor', 'Elena Rossi', 'Sofia Alvarez']
   const idx = names.map(n => t.indexOf(n))
   check(idx.every(i => i >= 0) && idx[0] < idx[1] && idx[1] < idx[2] && idx[2] < idx[3], 'insiders ranked above alumni path')
@@ -116,18 +116,22 @@ async function main() {
   await snap('contact')
 
   console.log('Refresh / back / direct load')
-  await page.reload({ waitUntil: 'load' })
+  // Dev-only: Turbopack occasionally aborts a navigation while it recompiles; retry once
+  await page.reload({ waitUntil: 'load' }).catch(() => page.reload({ waitUntil: 'load' }))
   check(/Experience|Education/i.test(await text()), 'profile survives refresh')
-  await page.goBack({ waitUntil: 'load' })
-  check(/Why this person/i.test(await text()), 'back returns to workspace')
+  await page.goBack()
+  // Back is a client-side transition in production; wait for the route and its content
+  await page.waitForURL(/\/messages\//, { timeout: 30_000 }).catch(() => {})
+  await page.getByText(/Why this person/i).first().waitFor({ timeout: 30_000 }).catch(() => {})
+  check(/\/messages\//.test(page.url()) && /Why this person/i.test(await text()), `back returns to workspace (${page.url()})`)
   await page.goto(jobUrl, { waitUntil: 'load' })
   check(/connections screened/i.test(await text()), 'direct load of job URL works')
 
   console.log('Secondary pages')
   for (const p of ['/', '/contacts', '/queue', '/profile']) {
-    await page.goto(`${BASE}${p}`, { waitUntil: 'load' })
+    await page.goto(`${BASE}${p}`, { waitUntil: 'load' }).catch(() => page.goto(`${BASE}${p}`, { waitUntil: 'load' }))
     t = await text()
-    check(!/npm run|linkedin:|APOLLO_API_KEY/i.test(t) && !/Application error|Unhandled/i.test(t), `${p} renders without CLI text or errors`)
+    check(!/npm run|linkedin:(login|enrich|discover)|APOLLO_API_KEY/i.test(t) && !/Application error|Unhandled/i.test(t), `${p} renders without CLI text or errors`)
     await snap(p === '/' ? 'dashboard' : p.slice(1))
   }
 

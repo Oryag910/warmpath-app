@@ -1,0 +1,11 @@
+# Never upload local-only / internal files to Vercel
+.linkedin-browser
+.linkedin-session.json
+debug-*
+docs
+HANDOFF.md
+CLAUDE.md
+AGENTS.md
+.claude
+.next
+node_modules

@@ -168,3 +168,8 @@ Rules embedded: under 60 words; one short re-context sentence + one gentle nudge
 ## Testing prompts
 
 `npx tsx scripts/test-prompts.ts` — runs prompt quality assertions against the real Claude API. Run this when modifying any prompt in `lib/claude.ts`.
+
+
+## rankContacts — inputs added for the demo release
+
+The per-contact block now also carries `Currently at target company: yes/no` and `Employment history: Company — Title (dates); …` (from `employmentSummary()` in `lib/path-signals.ts`), and the prompt has a second HARD RULE: a current employee scores ≥ 0.75 (relationship weakness changes the ask and referral readiness, not the score). `scoreReasoning` must not mention numeric scores, floors or calibration rules. The call runs at `temperature: 0`. Contact ids in the prompt are short indices (`c1…cN`) mapped back in `rankJob`.
