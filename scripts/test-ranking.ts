@@ -23,6 +23,7 @@ import {
   FORMER_EMPLOYEE_FLOOR,
 } from '../lib/path-signals'
 import { buildDemoContacts, DEMO_USER, DEMO_JOB, type DemoContact } from '../lib/demo/data'
+import { stripSignaturePlaceholders } from '../lib/message-text'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyRecord = Record<string, any>
@@ -165,6 +166,15 @@ test('employmentSummary includes both employers for a past-Stripe contact', () =
   const summary = employmentSummary(get('Sofia Alvarez'))
   assert.ok(summary?.includes('Stripe'), summary ?? 'null')
   assert.ok(summary?.includes('Ramp'), summary ?? 'null')
+})
+
+// ---- generated-message signature handling ----
+
+test('stripSignaturePlaceholders removes placeholder sign-offs and dangling closings', () => {
+  assert.equal(stripSignaturePlaceholders('Hi Priya,\n\nWould you refer me?\n\n— [Your name]'), 'Hi Priya,\n\nWould you refer me?')
+  assert.equal(stripSignaturePlaceholders('Hey,\n\nQuick ask.\n\nBest,\n[Name]'), 'Hey,\n\nQuick ask.')
+  assert.equal(stripSignaturePlaceholders('Thanks so much!\n\nBest,\nJordan'), 'Thanks so much!\n\nBest,\nJordan')
+  assert.equal(stripSignaturePlaceholders('No placeholder here.'), 'No placeholder here.')
 })
 
 // --- report -------------------------------------------------------------------

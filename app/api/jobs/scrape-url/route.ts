@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireUser } from '@/lib/auth'
+import { checkDemoLimit } from '@/lib/demo'
 import { extractJobFromHtml } from '@/lib/claude'
 
 const UA =
@@ -24,7 +25,9 @@ function htmlToText(html: string): string {
 export async function POST(request: NextRequest) {
   let url: string
   try {
-    const [, body] = await Promise.all([requireUser(), request.json()])
+    const [user, body] = await Promise.all([requireUser(), request.json()])
+    const demo = await checkDemoLimit(user, 'scrape')
+    if (!demo.ok) return NextResponse.json({ error: demo.message }, { status: demo.status })
     url = body.url
   } catch {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

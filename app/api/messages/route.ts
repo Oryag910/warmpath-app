@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth'
+import { checkDemoLimit, isDemoUser, DEMO_PERSONA_NAME } from '@/lib/demo'
 import { generateMessage, generateFollowup } from '@/lib/claude'
 
 export async function POST(request: NextRequest) {
@@ -8,6 +9,8 @@ export async function POST(request: NextRequest) {
     const user = await requireUser()
     const body = await request.json()
     const { warmPathId, channel, messageType } = body
+    const demo = await checkDemoLimit(user, 'generate')
+    if (!demo.ok) return NextResponse.json({ error: demo.message }, { status: demo.status })
 
     if (!warmPathId || !channel || !messageType) {
       return NextResponse.json({ error: 'warmPathId, channel, messageType required' }, { status: 400 })
@@ -26,6 +29,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 })
     }
 
+    // Real users have no name on file yet, so their drafts end on the ask with no signature
+    const messageOpts = { senderName: isDemoUser(user) ? DEMO_PERSONA_NAME : null }
     let body_text: string
 
     if (messageType === 'followup') {
@@ -49,7 +54,8 @@ export async function POST(request: NextRequest) {
           notes: warmPath.contact.notes,
         },
         priorMessages,
-        daysSince
+        daysSince,
+        messageOpts
       )
     } else {
       body_text = await generateMessage(
@@ -71,7 +77,8 @@ export async function POST(request: NextRequest) {
           scoreReasoning: warmPath.scoreReasoning ?? '',
         },
         channel as 'linkedin' | 'email',
-        messageType as 'outreach' | 'referral_ask'
+        messageType as 'outreach' | 'referral_ask',
+        messageOpts
       )
     }
 
@@ -80,7 +87,11 @@ export async function POST(request: NextRequest) {
     })
 
     return NextResponse.json(message, { status: 201 })
-  } catch {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  } catch (err) {
+    if (err instanceof Error && err.message === 'Unauthorized') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+    console.error(err)
+    return NextResponse.json({ error: 'Could not generate the message right now. Please try again.' }, { status: 500 })
   }
 }

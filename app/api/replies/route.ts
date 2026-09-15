@@ -1,12 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth'
+import { checkDemoLimit } from '@/lib/demo'
 import { interpretReply } from '@/lib/claude'
 
 export async function POST(request: NextRequest) {
   try {
     const user = await requireUser()
     const { messageId, replyText } = await request.json()
+    const demo = await checkDemoLimit(user, 'reply')
+    if (!demo.ok) return NextResponse.json({ error: demo.message }, { status: demo.status })
 
     if (!messageId || !replyText) {
       return NextResponse.json({ error: 'messageId and replyText required' }, { status: 400 })

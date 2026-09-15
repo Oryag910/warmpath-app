@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createDemoSandbox, encodeDemoCookie, DEMO_COOKIE } from '@/lib/demo'
+import { createDemoSandbox, encodeDemoCookie, DEMO_COOKIE, DemoBusyError } from '@/lib/demo'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -19,9 +19,9 @@ export async function GET(request: NextRequest) {
     })
     return res
   } catch (err) {
-    console.error('demo start failed', err)
+    if (!(err instanceof DemoBusyError)) console.error('demo start failed', err)
     const url = new URL('/landing', request.url)
-    url.searchParams.set('error', 'demo')
+    url.searchParams.set('error', err instanceof DemoBusyError ? 'busy' : 'demo')
     return NextResponse.redirect(url, 303)
   }
 }

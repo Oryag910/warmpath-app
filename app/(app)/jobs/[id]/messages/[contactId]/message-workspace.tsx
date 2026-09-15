@@ -66,7 +66,8 @@ export default function MessageWorkspace({ job, contact, warmPath, messages, sig
       body: JSON.stringify({ warmPathId: warmPath.id, channel, messageType: msgType }),
     })
     if (!res.ok) {
-      toast.error('Failed to generate message')
+      const data = await res.json().catch(() => ({}))
+      toast.error(data.error ?? 'Failed to generate message')
       setGenerating(false)
       return
     }
@@ -94,7 +95,8 @@ export default function MessageWorkspace({ job, contact, warmPath, messages, sig
       body: JSON.stringify({ messageId, replyText }),
     })
     if (!res.ok) {
-      toast.error('Failed to interpret reply')
+      const data = await res.json().catch(() => ({}))
+      toast.error(data.error ?? 'Failed to interpret reply')
       setInterpreting(false)
       return
     }

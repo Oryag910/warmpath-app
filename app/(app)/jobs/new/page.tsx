@@ -65,7 +65,8 @@ export default function AddJobPage() {
     })
 
     if (!res.ok) {
-      toast.error('Failed to add job')
+      const data = await res.json().catch(() => ({}))
+      toast.error(data.error ?? 'Failed to add job')
       setLoading(false)
       return
     }

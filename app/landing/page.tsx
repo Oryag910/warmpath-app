@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { buttonVariants } from '@/components/ui/button'
+import TryDemoButton from './try-demo-button'
 
 export const metadata: Metadata = {
   title: 'WarmPath — warm paths into any company',
@@ -31,7 +31,14 @@ const signals = [
   'Relationship strength (shapes the ask, not the ranking)',
 ]
 
-export default function LandingPage() {
+const ERROR_NOTICES: Record<string, string> = {
+  busy: 'The demo is getting a lot of traffic right now. Please try again in a few minutes.',
+  demo: 'The demo could not be started. Please try again in a moment.',
+}
+
+export default async function LandingPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
+  const { error } = await searchParams
+  const notice = error ? ERROR_NOTICES[error] : null
   return (
     <div className="min-h-screen bg-background text-foreground">
       <header className="border-b border-border">
@@ -52,14 +59,13 @@ export default function LandingPage() {
             Paste a job posting and WarmPath ranks your LinkedIn network for that specific role,
             explains who to reach out to and why, and drafts the message.
           </p>
-          <div className="mt-8 flex flex-col items-center gap-2">
-            <a href="/demo" className={buttonVariants({ size: 'lg', className: 'h-11 px-6 text-base' })}>
-              Try the demo
-            </a>
-            <p className="text-xs text-muted-foreground">
-              No sign-up. Opens a sandbox with a fictional candidate and a synthetic
-              1,100-connection network.
-            </p>
+          <div className="mt-8">
+            {notice && (
+              <p className="mx-auto mb-4 max-w-md rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                {notice}
+              </p>
+            )}
+            <TryDemoButton />
           </div>
           <p className="mt-6 text-sm text-muted-foreground">
             Already have an account?{' '}

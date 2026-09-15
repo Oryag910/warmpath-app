@@ -56,8 +56,21 @@ async function main() {
   await snap('landing')
 
   console.log('Try the demo')
+  // Give hydration a moment (a visitor reads the page before clicking); the CTA works either way
+  await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {})
   const t0 = Date.now()
-  await page.getByRole('link', { name: /try the demo/i }).first().click()
+  // Dispatch the click from page context: Playwright's own click() waits for the navigation it
+  // starts, which would hide the intermediate loading state we want to observe.
+  // The click handler runs synchronously inside a.click(), so the very same evaluate can read the
+  // state the visitor sees while the /demo request is in flight.
+  const loadingSeen = await page.evaluate(() => {
+    const cta = document.querySelector('#try-demo a[href="/demo"]') as HTMLAnchorElement | null
+    const label = document.querySelector('#try-demo a span:nth-child(2)') as HTMLElement | null
+    if (!cta || !label) return false
+    cta.click()
+    return getComputedStyle(label).display !== 'none' && getComputedStyle(cta).pointerEvents === 'none'
+  }).catch(() => false)
+  check(loadingSeen, 'loading state appears immediately after clicking Try the demo (and CTA is locked)')
   await page.waitForURL(/\/jobs\/[^/]+$/, { timeout: NAV_TIMEOUT })
   await page.waitForLoadState('load')
   console.log(`  sandbox created + job page loaded in ${Date.now() - t0} ms`)
@@ -78,6 +91,8 @@ async function main() {
   check(idx.every(i => i >= 0) && idx[0] < idx[1] && idx[1] < idx[2] && idx[2] < idx[3], 'insiders ranked above alumni path')
   check(!/Rachel Goldberg|Omar Haddad|Nina Petrova/.test(t), 'irrelevant contacts not shown as paths')
   check(!/\bc\d{1,2}\b/.test(t), 'no short contact ids leaked into explanations')
+  check(!/Re-rank|Rank my connections/i.test(t), 'live Re-rank is not offered in the demo')
+  check(/production ranking pipeline/i.test(t), 'demo ranking provenance copy shown')
   await snap('job')
 
   console.log('Weaker signals')
@@ -95,6 +110,8 @@ async function main() {
   check(/Referral ask|Context ask|Advice ask|Recruiter pitch|Intro ask/.test(t), 'recommended ask shown')
   check(/LinkedIn DM/i.test(t) && /Copy/.test(t), 'pre-generated LinkedIn draft visible')
   check(/pre-generated|when this demo network was seeded/i.test(t), 'draft provenance disclosed')
+  const PLACEHOLDER = /\[(your |first |full )?name\]|\[signature\]|\[your first name\]/i
+  check(!PLACEHOLDER.test(t), 'seeded draft has no name placeholder')
   await snap('workspace')
 
   if (GENERATE) {
@@ -105,7 +122,30 @@ async function main() {
     await page.waitForFunction((n) => document.querySelectorAll('[role="tab"]').length > n, before, { timeout: 90_000 })
     console.log(`  new draft generated in ${Date.now() - g0} ms`)
     check((await page.getByRole('tab').count()) > before, 'live generation added a draft')
+    check(!PLACEHOLDER.test(await text()), 'live draft has no name placeholder')
     await snap('workspace-generated')
+
+    if (process.env.LIMITS === '1') {
+      // Exhaust the per-sandbox draft limit through the API (uses the sandbox cookie) — costs a few Claude calls
+      console.log('Demo limits (API)')
+      const jobId = page.url().split('/jobs/')[1].split('/')[0]
+      const rank = await page.request.post(`${BASE}/api/jobs/${jobId}/warm-paths`, { data: { rankAll: true } })
+      const rankBody = await rank.json().catch(() => ({}))
+      check(rank.status() === 403 && typeof rankBody.error === 'string', `re-rank blocked in demo (${rank.status()}: ${rankBody.error ?? ''})`)
+      let last = 0, lastMsg = ''
+      for (let i = 0; i < 12; i++) {
+        const btn = page.getByRole('button', { name: /^Generate$/ })
+        if (!(await btn.isEnabled())) break
+        const respPromise = page.waitForResponse(r => r.url().includes('/api/messages') && r.request().method() === 'POST', { timeout: 90_000 })
+        await btn.click()
+        const resp = await respPromise
+        last = resp.status()
+        if (last !== 201) { lastMsg = (await resp.json().catch(() => ({}))).error ?? ''; break }
+        await page.getByRole('button', { name: /^Generate$/ }).waitFor({ timeout: 60_000 })
+      }
+      check(last === 429 && /live drafts/i.test(lastMsg), `draft limit returns a clear 429 (${last}: ${lastMsg})`)
+      check((await text()).includes(lastMsg.slice(0, 30)), 'limit message surfaced to the user as a toast')
+    }
   }
 
   console.log('Contact profile')

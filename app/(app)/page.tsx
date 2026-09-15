@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth'
+import { isDemoUser } from '@/lib/demo'
 import Link from 'next/link'
 import { buttonVariants } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
@@ -8,6 +9,7 @@ import DeleteJobButton from './delete-job-button'
 
 export default async function DashboardPage() {
   const user = await requireUser()
+  const demo = isDemoUser(user)
   const jobs = await prisma.job.findMany({
     where: { userId: user.id, status: 'active' },
     orderBy: { createdAt: 'desc' },
@@ -21,7 +23,11 @@ export default async function DashboardPage() {
           <h1 className="text-2xl font-semibold">Your jobs</h1>
           <p className="text-sm text-muted-foreground mt-1">Each job is its own warm path campaign.</p>
         </div>
-        <Link href="/jobs/new" className={buttonVariants()}>Add job</Link>
+        {demo ? (
+          <span className="text-xs text-muted-foreground">Adding jobs is disabled in the demo sandbox.</span>
+        ) : (
+          <Link href="/jobs/new" className={buttonVariants()}>Add job</Link>
+        )}
       </div>
 
       {jobs.length === 0 ? (

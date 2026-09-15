@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth'
+import { checkDemoLimit } from '@/lib/demo'
 import { generateOpportunityBrief } from '@/lib/claude'
 
 export async function GET() {
@@ -22,6 +23,8 @@ export async function POST(request: NextRequest) {
     const user = await requireUser()
     const body = await request.json()
     const { title, company, url, rawDescription } = body
+    const demo = await checkDemoLimit(user, 'job_create')
+    if (!demo.ok) return NextResponse.json({ error: demo.message }, { status: demo.status })
 
     if (!title || !company || !rawDescription) {
       return NextResponse.json({ error: 'title, company, and rawDescription are required' }, { status: 400 })

@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth'
+import { checkDemoLimit } from '@/lib/demo'
 import { NextResponse } from 'next/server'
 
 const TOP_N = 5
@@ -76,6 +77,8 @@ export async function POST(
 ) {
   const { id: jobId } = await params
   const user = await requireUser()
+  const demo = await checkDemoLimit(user, 'rank')
+  if (!demo.ok) return NextResponse.json({ error: demo.message }, { status: demo.status })
 
   const job = await prisma.job.findFirst({ where: { id: jobId, userId: user.id } })
   if (!job) return NextResponse.json({ error: 'Not found' }, { status: 404 })

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth'
+import { checkDemoLimit } from '@/lib/demo'
 import { rankJob, RECOMMEND_THRESHOLD } from '@/lib/ranking'
 
 export const maxDuration = 60
@@ -36,6 +37,8 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ id: st
     const { id } = await ctx.params
     const body = await request.json()
     const { rankAll, contactIds } = body
+    const demo = await checkDemoLimit(user, 'rank')
+    if (!demo.ok) return NextResponse.json({ error: demo.message }, { status: demo.status })
 
     if (!rankAll && (!contactIds || !Array.isArray(contactIds) || contactIds.length === 0)) {
       return NextResponse.json({ error: 'contactIds array is required' }, { status: 400 })

@@ -1,12 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth'
+import { checkDemoLimit } from '@/lib/demo'
 import { generateOpportunityBrief } from '@/lib/claude'
 
 export async function POST(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   try {
     const user = await requireUser()
     const { id } = await ctx.params
+    const demo = await checkDemoLimit(user, 'brief')
+    if (!demo.ok) return NextResponse.json({ error: demo.message }, { status: demo.status })
 
     const job = await prisma.job.findFirst({ where: { id, userId: user.id } })
     if (!job) return NextResponse.json({ error: 'Not found' }, { status: 404 })

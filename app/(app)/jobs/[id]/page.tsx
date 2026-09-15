@@ -147,7 +147,13 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
             </p>
           )}
         </div>
-        <RankButton jobId={id} hasExistingPaths={warmPaths.length > 0} />
+        {demo ? (
+          <p className="text-xs text-muted-foreground max-w-xs text-right">
+            Demo rankings were generated with WarmPath&apos;s production ranking pipeline.
+          </p>
+        ) : (
+          <RankButton jobId={id} hasExistingPaths={warmPaths.length > 0} />
+        )}
       </div>
 
       {warmPaths.length > 0 && (

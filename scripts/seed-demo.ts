@@ -112,7 +112,8 @@ async function main() {
       },
       { recommendedAsk: wp.recommendedAsk ?? 'context_ask', pathType: wp.pathType ?? 'direct', scoreReasoning: wp.scoreReasoning ?? '' },
       'linkedin',
-      'outreach'
+      'outreach',
+      { senderName: DEMO_USER.name }
     )
     await prisma.message.create({
       data: { warmPathId: wp.id, channel: 'linkedin', messageType: 'outreach', body },

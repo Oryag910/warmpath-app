@@ -1,6 +1,6 @@
 import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto'
 import { prisma } from './prisma'
-import { DEMO_DOMAIN, DEMO_TEMPLATE_EMAIL } from './demo/data'
+import { DEMO_DOMAIN, DEMO_TEMPLATE_EMAIL, DEMO_USER } from './demo/data'
 import type { Prisma } from './generated/prisma/client'
 
 // Recruiter demo mode.
@@ -12,7 +12,52 @@ import type { Prisma } from './generated/prisma/client'
 // when there is no Supabase session, but only ever resolves to users on the demo domain.
 
 export const DEMO_COOKIE = 'wp_demo'
+export const DEMO_PERSONA_NAME = DEMO_USER.name
 const SANDBOX_TTL_MS = 24 * 60 * 60 * 1000
+
+// Abuse guards for anonymous sandboxes. Counts come from rows the sandbox already owns, so
+// there is no extra state to store; limits are per sandbox, not per IP.
+export const DEMO_LIMITS = {
+  generate: 8,          // live message drafts (outreach / follow-up / referral ask) per sandbox
+  reply: 5,             // reply interpretations per sandbox
+  sandboxesPer10Min: 40 // global cap on new sandboxes, protects the clone path from bots
+}
+const DEMO_BLOCKED_MESSAGE = 'Not available in the demo sandbox. Sign up to use this with your own network.'
+
+export type DemoAction = 'generate' | 'reply' | 'rank' | 'brief' | 'scrape' | 'job_create'
+export type DemoCheck = { ok: true } | { ok: false; status: number; message: string }
+
+/** Real users always pass. Demo sandboxes get per-sandbox counters or a plain block per action. */
+export async function checkDemoLimit(
+  user: { id: string; email?: string | null; createdAt?: Date | null },
+  action: DemoAction
+): Promise<DemoCheck> {
+  if (!isDemoUser(user)) return { ok: true }
+  switch (action) {
+    case 'generate': {
+      // Seeded drafts keep the template's timestamps, so counting from the sandbox's own
+      // creation time counts only the visitor's live generations
+      const used = await prisma.message.count({
+        where: { warmPath: { job: { userId: user.id } }, createdAt: { gte: user.createdAt ?? new Date(0) } },
+      })
+      if (used >= DEMO_LIMITS.generate) {
+        return { ok: false, status: 429, message: `This demo sandbox has used its ${DEMO_LIMITS.generate} live drafts. Start a new demo from the landing page to keep exploring.` }
+      }
+      return { ok: true }
+    }
+    case 'reply': {
+      const used = await prisma.replyAnalysis.count({ where: { message: { warmPath: { job: { userId: user.id } } } } })
+      if (used >= DEMO_LIMITS.reply) {
+        return { ok: false, status: 429, message: `This demo sandbox has used its ${DEMO_LIMITS.reply} reply interpretations.` }
+      }
+      return { ok: true }
+    }
+    default:
+      return { ok: false, status: 403, message: DEMO_BLOCKED_MESSAGE }
+  }
+}
+
+export class DemoBusyError extends Error {}
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyRecord = Record<string, any>
@@ -62,6 +107,12 @@ export async function createDemoSandbox(): Promise<{ userId: string; jobId: stri
   if (!template || template.jobs.length === 0) {
     throw new Error('Demo template is not seeded')
   }
+
+  // Global throttle on sandbox creation (each clone writes ~1,100 rows)
+  const recent = await prisma.user.count({
+    where: { email: { endsWith: `@${DEMO_DOMAIN}`, not: DEMO_TEMPLATE_EMAIL }, createdAt: { gt: new Date(Date.now() - 10 * 60 * 1000) } },
+  })
+  if (recent >= DEMO_LIMITS.sandboxesPer10Min) throw new DemoBusyError('Too many demo sandboxes created recently')
 
   // Opportunistic cleanup of stale sandboxes (cascade removes their data)
   await prisma.user.deleteMany({

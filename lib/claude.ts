@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk'
+import { stripSignaturePlaceholders } from './message-text'
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
@@ -224,12 +225,24 @@ export interface WarmPathContext {
   scoreReasoning: string
 }
 
+export interface MessageOptions {
+  /** Name to sign off with. When unknown, the message ends on the ask with no signature line. */
+  senderName?: string | null
+}
+
+function signatureRule(senderName?: string | null): string {
+  return senderName
+    ? `Sign off as "${senderName}" (first name is fine for a warm tie). Never write a placeholder like [Your name].`
+    : 'Do not include a sign-off, signature line, or name placeholder — end on the last sentence of the ask.'
+}
+
 export async function generateMessage(
   job: JobContext,
   contact: ContactContext,
   warmPath: WarmPathContext,
   channel: 'linkedin' | 'email',
-  messageType: 'outreach' | 'followup' | 'referral_ask'
+  messageType: 'outreach' | 'followup' | 'referral_ask',
+  opts: MessageOptions = {}
 ): Promise<string> {
   const channelConstraint = channel === 'linkedin'
     ? 'LinkedIn DM — must be under 150 words, no subject line needed.'
@@ -268,19 +281,23 @@ Contact:
 
 Why this person matters: ${warmPath.scoreReasoning}
 
+${signatureRule(opts.senderName)}
+
 Write only the message body (no commentary, no explanation). Make it sound like a specific, thoughtful human wrote it — not a template.`,
       },
     ],
   })
 
-  return response.content[0].type === 'text' ? response.content[0].text.trim() : ''
+  const text = response.content[0].type === 'text' ? response.content[0].text.trim() : ''
+  return stripSignaturePlaceholders(text)
 }
 
 export async function generateFollowup(
   job: JobContext,
   contact: ContactContext,
   priorMessages: string[],
-  daysSince: number
+  daysSince: number,
+  opts: MessageOptions = {}
 ): Promise<string> {
   const response = await client.messages.create({
     model: 'claude-sonnet-4-6',
@@ -303,13 +320,15 @@ Rules:
 - One short sentence of re-context, one gentle nudge
 - Do not sound desperate or apologetic
 - Do not start with "Just following up" — be a little more human
+- ${signatureRule(opts.senderName)}
 
 Write only the message. No commentary.`,
       },
     ],
   })
 
-  return response.content[0].type === 'text' ? response.content[0].text.trim() : ''
+  const text = response.content[0].type === 'text' ? response.content[0].text.trim() : ''
+  return stripSignaturePlaceholders(text)
 }
 
 export interface ReplyInterpretation {
