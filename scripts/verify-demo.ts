@@ -126,25 +126,26 @@ async function main() {
     await snap('workspace-generated')
 
     if (process.env.LIMITS === '1') {
-      // Exhaust the per-sandbox draft limit through the API (uses the sandbox cookie) — costs a few Claude calls
+      // Exhaust the per-sandbox draft limit through the API (same sandbox cookie) — costs a few Claude calls
       console.log('Demo limits (API)')
-      const jobId = page.url().split('/jobs/')[1].split('/')[0]
+      const [, jobId, contactId] = page.url().match(/\/jobs\/([^/]+)\/messages\/([^/?#]+)/) ?? []
       const rank = await page.request.post(`${BASE}/api/jobs/${jobId}/warm-paths`, { data: { rankAll: true } })
       const rankBody = await rank.json().catch(() => ({}))
       check(rank.status() === 403 && typeof rankBody.error === 'string', `re-rank blocked in demo (${rank.status()}: ${rankBody.error ?? ''})`)
+      const paths = await (await page.request.get(`${BASE}/api/jobs/${jobId}/warm-paths`)).json() as { id: string; contactId: string }[]
+      const warmPathId = paths.find(p => p.contactId === contactId)?.id
+      check(!!warmPathId, 'resolved warm path id for the limit test')
       let last = 0, lastMsg = ''
-      for (let i = 0; i < 12; i++) {
-        const btn = page.getByRole('button', { name: /^Generate$/ })
-        if (!(await btn.isEnabled())) break
-        const respPromise = page.waitForResponse(r => r.url().includes('/api/messages') && r.request().method() === 'POST', { timeout: 90_000 })
-        await btn.click()
-        const resp = await respPromise
-        last = resp.status()
-        if (last !== 201) { lastMsg = (await resp.json().catch(() => ({}))).error ?? ''; break }
-        await page.getByRole('button', { name: /^Generate$/ }).waitFor({ timeout: 60_000 })
+      for (let i = 0; i < 12 && warmPathId; i++) {
+        const r = await page.request.post(`${BASE}/api/messages`, { data: { warmPathId, channel: 'linkedin', messageType: 'outreach' }, timeout: 90_000 })
+        last = r.status()
+        if (last !== 201) { lastMsg = ((await r.json().catch(() => ({}))) as { error?: string }).error ?? ''; break }
       }
-      check(last === 429 && /live drafts/i.test(lastMsg), `draft limit returns a clear 429 (${last}: ${lastMsg})`)
-      check((await text()).includes(lastMsg.slice(0, 30)), 'limit message surfaced to the user as a toast')
+      check(last === 429 && /live drafts/i.test(lastMsg), `draft limit returns a clear 429 (${last}: ${lastMsg.slice(0, 80)})`)
+      // The UI surfaces the same message as a toast
+      await page.getByRole('button', { name: /^Generate$/ }).click()
+      const toastSeen = await page.getByText(/used its \d+ live drafts/i).first().waitFor({ timeout: 15_000 }).then(() => true).catch(() => false)
+      check(toastSeen, 'limit message surfaced to the user as a toast')
     }
   }
 
@@ -182,7 +183,8 @@ async function main() {
   await page.goto(`${BASE}/queue`, { waitUntil: 'load' })
   check(/\/login/.test(page.url()), 'app routes require auth again after exit')
 
-  const realErrors = consoleErrors.filter(e => !/favicon|Download the React DevTools/i.test(e))
+  // The LIMITS run deliberately provokes a 429, which Chrome logs as a resource error
+  const realErrors = consoleErrors.filter(e => !/favicon|Download the React DevTools/i.test(e) && !(process.env.LIMITS === '1' && /status of (429|403)/.test(e)))
   check(realErrors.length === 0, `no console errors (${realErrors.length})`)
   for (const e of realErrors) console.log('   console:', e.slice(0, 200))
 
