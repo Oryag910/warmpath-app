@@ -62,9 +62,11 @@ export class DemoBusyError extends Error {}
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyRecord = Record<string, any>
 
+// Dedicated signing secret for the sandbox cookie. Deliberately not derived from any other
+// credential: rotating it only invalidates demo cookies, and a leaked cookie key exposes nothing else.
 function secret(): string {
-  const s = process.env.DEMO_COOKIE_SECRET ?? process.env.DATABASE_URL
-  if (!s) throw new Error('DEMO_COOKIE_SECRET or DATABASE_URL must be set')
+  const s = process.env.DEMO_COOKIE_SECRET
+  if (!s) throw new Error('DEMO_COOKIE_SECRET must be set to enable the demo sandbox')
   return s
 }
 

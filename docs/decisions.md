@@ -4,87 +4,108 @@ Recorded tradeoffs. Template: **Decision → Why → Consequences.**
 
 ---
 
-## Supabase over Firebase
+## Hybrid ranking: deterministic retrieval, one batched model call, deterministic invariants
 
-**Decision:** Use Supabase (PostgreSQL + Auth + SSR SDK) as the backend.
+**Decision:** Ranking is three stages. Plain matching logic picks a small candidate pool, one Claude call scores that pool relationally, and code enforces a few invariants on the result.
 
-**Why:** Supabase gives a real relational database (SQL, foreign keys, joins) and a battle-tested auth layer with cookie-based SSR support out of the box. Firebase's Firestore is document-oriented and poorly suited to the relational Job→WarmPath←Contact model.
+**Why:** Fully deterministic ranking cannot judge role proximity or write an explanation. Fully model-driven ranking over a thousand contacts is slow, expensive, and unexplainable, and in practice it scored former employees as strangers and dropped contacts whose ids it mis-copied. Facts that are knowable from the data (currently or formerly employed at the target) should never depend on model judgment.
 
-**Consequences:** SQL schema is the source of truth; Prisma ORM sits on top. Auth state is managed via `@supabase/ssr` cookie helpers — the `proxy.ts` middleware refreshes sessions on every request.
+**Consequences:** The model only ever sees at most ~35 contacts, so cost is bounded and every recommendation is explained relative to the same pool. Current employees are floored to the recommend threshold and former employees to a visible weak signal. Every scored candidate is kept so the UI can show who was considered and rejected. Contacts are sent as short index ids and mapped back afterwards.
 
 ---
 
-## Prisma 7 (not Prisma 5/6)
+## One batched `rankContacts` call, not one call per contact
 
-**Decision:** Use Prisma 7 with the `@prisma/adapter-pg` driver adapter.
+**Decision:** The whole candidate pool is scored in a single call.
 
-**Why:** Prisma 7 works in the Next.js 16 edge/serverless environment without the old query engine binary. Vercel's Node.js runtime handles the `pg` adapter cleanly.
+**Why:** Scoring in isolation ignores relative comparison ("among these people, who matters most?"). One call is faster and cheaper, and the scores are better calibrated because the model reasons across the pool.
 
-**Consequences (all documented in `CLAUDE.md`):**
-- Connection URL goes in `prisma.config.ts`, not `schema.prisma`
-- Generated client is at `lib/generated/prisma/client.ts` — must be committed or regenerated
-- `new PrismaClient()` without the adapter throws — always construct via `lib/prisma.ts`
-- Generated files have `@ts-nocheck`, so all query returns are `any` — cast explicitly
-- `engineType = "library"` is required in the generator block
+**Consequences:** Prompt size grows with pool size, which is why Stage 1 caps the pool. `max_tokens` scales with the number of contacts so JSON is never truncated.
+
+---
+
+## Per-visitor demo sandboxes instead of a shared demo account
+
+**Decision:** Every "Try the demo" click clones a seeded template user into a fresh sandbox identified by a signed HttpOnly cookie.
+
+**Why:** A shared demo account was the main reliability risk: concurrent visitors would see each other's drafts and status changes. Cloning costs a few seconds and removes the problem entirely.
+
+**Consequences:** Sandboxes are throttled (40 per 10 minutes), limited (8 live drafts, 5 reply interpretations, no job creation or re-ranking) and deleted after 24 hours. `requireUser()` resolves the cookie only to users on the reserved demo domain, so real accounts are unreachable from a demo session.
+
+---
+
+## Dedicated `DEMO_COOKIE_SECRET`
+
+**Decision:** The demo cookie is signed with its own secret, with no fallback to another credential.
+
+**Why:** Reusing a connection string as an HMAC key couples two unrelated secrets: rotating one breaks the other, and a cookie-key leak would expose the database. A dedicated secret can be rotated freely; the only effect is that in-flight demo cookies are cleared and visitors return to the landing page.
+
+**Consequences:** The variable is required in every environment that serves the demo.
+
+---
+
+## Supabase over Firebase
+
+**Decision:** Supabase (PostgreSQL + Auth + SSR SDK) as the backend.
+
+**Why:** A real relational database suits the Job → WarmPath ← Contact model; Firestore does not. Supabase's cookie-based SSR auth fits the App Router.
+
+**Consequences:** The SQL schema is the source of truth, Prisma sits on top, and `proxy.ts` refreshes the session on every request.
+
+---
+
+## Prisma 7 with the `pg` driver adapter
+
+**Decision:** Prisma 7 with `@prisma/adapter-pg`.
+
+**Why:** Prisma 7 runs in the Next.js 16 serverless environment without the legacy query engine binary.
+
+**Consequences:** The connection URL lives in `prisma.config.ts`, not `schema.prisma`; the client is generated into `lib/generated/prisma` (ignored, regenerated on install and build); `new PrismaClient()` without the adapter throws, so everything goes through `lib/prisma.ts`; generated types are `@ts-nocheck`, so query results are cast explicitly.
 
 ---
 
 ## `@base-ui/react` shadcn variant
 
-**Decision:** Use the `@base-ui/react` backend for shadcn/ui components instead of the default Radix UI one.
+**Decision:** shadcn/ui on `@base-ui/react` rather than Radix.
 
-**Why:** This was generated by `shadcn` init during project setup. No specific reason to deviate.
+**Why:** It is what `shadcn init` generated for this Next.js version; no reason to deviate.
 
-**Consequences:**
-- `Button` has no `asChild` prop — use `<Link className={buttonVariants()}>` instead
-- `Select.Root` `onValueChange` returns `string | null`, not `string`
-
----
-
-## Batched `rankContacts` — one Claude call for all contacts
-
-**Decision:** `rankContacts` makes a single Claude API call for the entire contact list rather than one call per contact.
-
-**Why:** Scoring contacts in isolation ignores relative comparison ("among *these* contacts, who matters most?"). One batched call is faster, cheaper, and produces better-calibrated scores because Claude can reason relationally.
-
-**Consequences:** The prompt grows with contact count. For very large lists (hundreds of contacts) the context window or output token limit could become a constraint — batch size would need limiting. Not a concern at MVP scale.
-
----
-
-## AI fields nullable + populated on demand
-
-**Decision:** `Job.opportunityBrief`, `WarmPath.relevanceScore`, etc. start null and are written when the user explicitly triggers generation.
-
-**Why:** Eager generation on every create would burn API credits for jobs/contacts the user never acts on, and would add latency to the create flow. Keeping generation explicit preserves budget and gives the user a clear "generate" action.
-
-**Consequences:** UI must handle the null state (loading skeleton / "Generate brief" button). The brief-loader pattern in `app/(app)/jobs/[id]/brief-loader.tsx` handles this for the job page.
+**Consequences:** `Button` has no `asChild`, so links use `<Link className={buttonVariants()}>`; `Select` reports `string | null` on change.
 
 ---
 
 ## `proxy.ts` instead of `middleware.ts`
 
-**Decision:** Auth middleware is named `proxy.ts` at the project root, not the conventional `middleware.ts`.
+**Decision:** Request middleware lives in `proxy.ts`.
 
-**Why:** Next.js 16 renamed the conventional file to `proxy.ts`. The `AGENTS.md` warning ("this is NOT the Next.js you know") exists precisely for this kind of breaking-change gotcha.
-
-**Consequences:** Any new auth-middleware logic goes in `proxy.ts`. Don't create a `middleware.ts` — Next.js 16 won't pick it up.
+**Why:** Next.js 16 renamed the convention. A `middleware.ts` would be ignored.
 
 ---
 
-## Dynamic `companyOverlap` at ranking time
+## AI fields nullable and populated on demand
 
-**Decision:** The `warm-paths` ranking route recomputes `companyOverlap` dynamically rather than trusting `Contact.companyOverlap` alone.
+**Decision:** `Job.opportunityBrief`, `WarmPath.relevanceScore` and friends start null and are written when the user triggers generation.
 
-**Why:** A contact's `employmentHistory` (LinkedIn-enriched) may show past employment at the target company even if the stored `companyOverlap` flag is false (e.g. the contact was added before enrichment). Checking at ranking time catches this.
+**Why:** Eager generation on every create would spend model calls on jobs and contacts the user never acts on and add latency to the create flow.
 
-**Consequences:** Ranking results may differ before and after LinkedIn enrichment for the same contact set. The stored `Contact.companyOverlap` is still set by the enrichment scripts (`schoolOverlap` is also backfilled on enrichment), but ranking doesn't rely on it being current.
+**Consequences:** The UI handles the null state (loading card, rank button).
 
 ---
 
-## LinkedIn enrichment as a local dev tool, not a deployed feature
+## Company overlap recomputed at ranking time
 
-**Decision:** The Playwright-based LinkedIn scraper (`scripts/enrich-linkedin.ts`, `lib/linkedin-scrape.ts`) runs locally via npm scripts. It is not exposed as a web route or a serverless function.
+**Decision:** Ranking derives company overlap from the contact's current company and employment history rather than trusting the stored `companyOverlap` flag alone.
 
-**Why:** Playwright cannot run in a serverless/edge environment. Running it locally means LinkedIn sees the user's own IP (not a server farm IP), which is less likely to trigger bot detection. The session is persisted to `.linkedin-session.json` (gitignored).
+**Why:** A contact's history may show past employment at the target company even when the stored flag is stale.
 
-**Consequences:** Enrichment is a periodic manual step. The UI shows enrichment status (via `enrichedAt`) but provides no in-app trigger.
+**Consequences:** Ranking reflects the data on file at the time it runs; the stored flag is a hint, not a source of truth.
+
+---
+
+## Profile enrichment tooling kept out of the repository
+
+**Decision:** Contacts enter the product through CSV import, manual entry, or Apollo search. The experimental local tooling that once populated employment and education history from LinkedIn profiles is not part of this repository, and the hosted demo does not depend on it.
+
+**Why:** It cannot run serverless, it is brittle by nature, and it is not what the project is about. The product's value is in retrieval, ranking, explanation and outreach; those work on whatever history is on file.
+
+**Consequences:** The `Contact` history fields and the second-degree `DiscoveredContact` model remain, and the UI shows them when present.

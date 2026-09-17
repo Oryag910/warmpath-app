@@ -1,17 +1,17 @@
 # Architecture
 
-Deeper companion to the Architecture section in `CLAUDE.md`. Read `CLAUDE.md` first for the quick map and the Prisma 7 / shadcn gotchas.
+System narrative for WarmPath: request lifecycle, data model, the ranking pipeline, the AI layer, and the recruiter demo. The README has the short version.
 
 ## Stack
 
-Next.js 16 (App Router) + TypeScript · Supabase (Auth + PostgreSQL) · Prisma 7 (with `@prisma/adapter-pg`) · Claude API `claude-sonnet-4-6` (`@anthropic-ai/sdk`) · Tailwind v4 + shadcn/ui on `@base-ui/react` · Vercel deployment. Standalone Playwright scripts for LinkedIn enrichment (local dev tool, not deployed).
+Next.js 16 (App Router) + TypeScript · Supabase (Auth + PostgreSQL) · Prisma 7 with `@prisma/adapter-pg` · Claude API (`@anthropic-ai/sdk`, `claude-sonnet-4-6`) · Tailwind v4 + shadcn/ui on `@base-ui/react` · Vercel.
 
 ## Request lifecycle
 
-1. **`proxy.ts`** (Next.js 16's rename of `middleware.ts`) runs on every request: refreshes the Supabase session cookie and redirects unauthenticated users to `/login`.
-2. Pages under **`app/(app)/`** (a route group — no URL segment) are the authenticated shell. `app/login`, `app/signup` are public.
-3. Server code that needs the user calls **`requireUser()`** (`lib/auth.ts`): reads the Supabase user, then `findUnique`/`create`s the matching Prisma `User` row keyed by email (the Prisma `User.id` is set to the Supabase auth id on first login). Throws `'Unauthorized'` otherwise.
-4. **`lib/prisma.ts`** exports a singleton `PrismaClient` built with a `PrismaPg` adapter over `DATABASE_URL` (the bare `new PrismaClient()` throws in Prisma 7 — the adapter is mandatory). Cached on `globalThis` in dev to survive HMR.
+1. **`proxy.ts`** (Next.js 16's name for `middleware.ts`) runs on every request: it refreshes the Supabase session cookie, rewrites an anonymous `/` to the landing page, lets `/demo`, `/landing`, `/login` and `/signup` through, and redirects every other unauthenticated request to `/login`. A request carrying the demo cookie is let through; the cookie is verified later, in `lib/auth.ts`.
+2. Pages under **`app/(app)/`** (a route group, no URL segment) are the authenticated shell.
+3. Server code that needs the current user calls **`requireUser()`** (`lib/auth.ts`). It resolves the Supabase user and upserts the matching Prisma `User` row keyed by email. With no Supabase session it falls back to the signed demo cookie, which can only ever resolve to a user on the reserved demo domain. A cookie that fails verification is cleared and the visitor is sent back to the landing page.
+4. **`lib/prisma.ts`** exports a singleton `PrismaClient` built on the `PrismaPg` adapter (Prisma 7 requires a driver adapter). It is cached on `globalThis` in development to survive HMR.
 
 ## Data model
 
@@ -23,52 +23,61 @@ User ──< Job ──< WarmPath >── Contact
                     └──< Message ──1 ReplyAnalysis
 ```
 
-- **User** — auth identity + profile JSON arrays (`schools`, `pastCompanies`, `organizations`) used for overlap detection.
-- **Job** — the posting (`title`, `company`, `url?`, `rawDescription`) plus AI-generated `opportunityBrief`, `networkingStrategy`, `extractedRequirements` (null until the brief is generated). `status` defaults `"active"`.
-- **Contact** — a person in the user's network. Core fields (`name`, `title?`, `company?`, `linkedinUrl?`, `email?`, `relationshipStrength` default `"weak"`, `schoolOverlap`, `companyOverlap`, `notes?`, `source` `manual|apollo`) plus LinkedIn-enrichment fields (`headline`, `location`, `about`, `educationHistory`, `employmentHistory`, `organizations`, `skills`, `linkedinProfile`, `enrichedAt`). Unique on `(userId, linkedinUrl)`.
-- **WarmPath** — the join of one Job + one Contact, and the heart of the product. Holds all AI-scored fields: `relevanceScore` (0–1), `scoreReasoning`, `pathType` (`direct|alumni|intro|weak`), `recommendedAsk` (`context_ask|advice_ask|referral_ask|intro_ask|recruiter_pitch`), `referralReadiness` (`not_ready|possible|ready`), `nextAction`. All null until ranking runs. `status` lifecycle: `not_started → drafted → sent → replied → meeting_set → referred / closed`. Unique on `(jobId, contactId)`.
-- **Message** — a drafted/sent outreach message on a WarmPath (`channel` linkedin|email, `messageType` outreach|followup|referral_ask, `body`, `status` draft|…, `sentAt?`, `followUpDate?`).
-- **ReplyAnalysis** — 1:1 with a Message; stores the pasted `replyText` plus AI `sentiment` and `suggestedNextStep`.
+- **User** — auth identity plus profile arrays (`schools`, `pastCompanies`, `organizations`) used for affiliation matching.
+- **Job** — the posting (`title`, `company`, `url?`, `rawDescription`) plus the generated `opportunityBrief`, `networkingStrategy` and `extractedRequirements`. Null until the brief is generated.
+- **Contact** — a person in the user's network. Core fields (`name`, `title`, `company`, `linkedinUrl`, `relationshipStrength`, `schoolOverlap`, `companyOverlap`, `notes`, `source`) plus optional profile history (`headline`, `location`, `educationHistory`, `employmentHistory`, `organizations`, `skills`, `enrichedAt`). Unique on `(userId, linkedinUrl)`.
+- **WarmPath** — one Job × one Contact, and the heart of the product. Holds every scored field: `relevanceScore` (0–1), `scoreReasoning`, `pathType` (`direct | alumni | intro | weak`), `recommendedAsk` (`context_ask | advice_ask | referral_ask | intro_ask | recruiter_pitch`), `referralReadiness`, `nextAction`, and the outreach `status` (`not_started → drafted → sent → replied → meeting_set → referred / closed`). Unique on `(jobId, contactId)`.
+- **Message** — a drafted or sent message on a WarmPath (`channel` linkedin | email, `messageType` outreach | followup | referral_ask, `body`, `status`).
+- **ReplyAnalysis** — 1:1 with a Message: the pasted reply plus `sentiment` and `suggestedNextStep`.
+- **DiscoveredContact** — a second-degree person at a target company with the bridge contact who can introduce the user. The tracking UI is in the app; the tooling that populated it is experimental and not part of this repository.
 
-AI fields are deliberately nullable and populated on demand (user clicks "rank" / "generate brief" / "draft message") rather than eagerly — keeps Claude calls explicit and cheap.
+AI-derived fields are nullable and written on demand (rank, generate brief, draft message) rather than eagerly, which keeps model calls explicit and cheap.
 
-## Key flows
+## Ranking pipeline
 
-- **Create job** — `/jobs/new`. Optional URL → `POST /api/jobs/scrape-url` fetches the page, strips HTML to text, calls `extractJobFromHtml` (Claude) → `{ title, company, rawDescription }`. JS-heavy / bot-blocked pages return `{ ok: false, reason }` and the form falls back to manual entry. Then `POST /api/jobs` creates the Job; the opportunity brief is generated separately (`/api/jobs/[id]/brief`, surfaced by `brief-loader.tsx`).
-- **Rank contacts → create WarmPaths** — "Rank my connections" on the job page → `POST /api/jobs/[id]/warm-paths {rankAll:true}` → `rankJob()` in `lib/ranking.ts`. Stage 1 (deterministic, `lib/path-signals.ts`): company match via distinctive words on `company` + any `employmentHistory` entry (≤30), plus ≤5 contacts with a school/org affiliation shared with the user's profile, ordered by a heuristic. Stage 2: one `rankContacts` call over that pool (short index ids, employment summary + "currently at target" flag included in the prompt). Stage 3 invariants: current employees floored to 0.55, former employees to 0.30, every scored candidate persisted so the job page can show "weaker signals considered but not recommended"; the transaction that wipes stale `not_started` rows runs only after scoring succeeds. The job page renders the ranked list with `pathSignals()` chips and a funnel line (screened → scored → recommended).
-- **Draft message** — `/jobs/[id]/messages/[contactId]` → `generateMessage` with channel + ask-type guidance baked into the prompt. Channel constraints: LinkedIn DM < 150 words; email gets a `Subject:` first line, body < 200 words.
-- **Follow-up** — `generateFollowup` (< 60 words, no "just following up"). The `/queue` page lists WarmPaths in actionable statuses across all jobs, sorted by score.
-- **Reply handling** — paste a reply → `interpretReply` returns `{ sentiment, suggestedNextStep }`, stored as `ReplyAnalysis` via `/api/replies`.
+`rankJob(user, job, { rankAll | contactIds })` in `lib/ranking.ts` is the single entry point, used by the warm-paths API route and by the demo seed. It runs three stages; the pure matching helpers live in `lib/path-signals.ts`, which is dependency-free so client components can reuse the same logic for explanation chips.
+
+**Stage 1 — deterministic retrieval.** The target company is reduced to its distinctive words (`"Palantir Technologies"` → `palantir`) so generic words never match. A contact is a company match if that word appears in their current `company` or any `employmentHistory` entry. Up to 30 company matches, ordered by a small heuristic, plus up to 5 contacts with a school or organization shared with the user, form the candidate pool. Everyone else is never sent to the model.
+
+**Stage 2 — one batched scoring call.** `rankContacts` scores the whole pool in a single call so scores are relative to each other. Each contact is sent with a short index id (`c1 … cN`), their relationship strength, shared affiliations, a condensed employment summary and an explicit "currently at target company" flag. The prompt fixes the calibration: employment at the target company is what makes a path warm; relationship strength shapes the ask, not the score; the model may not infer connections it cannot see. The call runs at `temperature: 0`, and explanations must not mention scores or rules.
+
+**Stage 3 — deterministic invariants.** After the model responds: short ids are mapped back to real contact ids (long ids were being mis-copied and silently dropped); current employees are floored to the recommend threshold (0.55) and former employees to 0.30; every scored candidate is persisted so the UI can show who was considered and not recommended; and stale rows from a previous ranking are only replaced inside a transaction that runs after scoring succeeds. Paths that were already in progress are preserved.
+
+The job page renders the result as a funnel (connections screened → candidates scored → recommended), then the ranked cards with `pathSignals()` chips (currently at / formerly at / school alum / shared org / tie strength), and a collapsed tier of the non-recommended candidates.
+
+## Other flows
+
+- **Create job** — `/jobs/new`. An optional URL goes to `POST /api/jobs/scrape-url`, which fetches the page, strips it to text and calls `extractJobFromHtml`; blocked or JS-only pages fall back to manual entry. The brief is generated separately by `/api/jobs/[id]/brief` and surfaced by `brief-loader.tsx`.
+- **Contacts** — manual entry, LinkedIn connections CSV import (`lib/linkedin-csv.ts`, parsed client-side, deduplicated on LinkedIn URL then name + company), and optional Apollo.io company search (`lib/apollo.ts`, dormant without `APOLLO_API_KEY`).
+- **Draft message** — `/jobs/[id]/messages/[contactId]` → `generateMessage` with the channel and the recommended ask baked into the prompt (LinkedIn DM < 150 words; email gets a subject line and < 200 words). Follow-ups use `generateFollowup`.
+- **Reply handling** — paste a reply → `interpretReply` → `{ sentiment, suggestedNextStep }` stored as `ReplyAnalysis`.
+- **Queue** — `/queue` lists actionable warm paths across all jobs, sorted by score.
 
 ## AI layer (`lib/claude.ts`)
 
-One module, one shared `SYSTEM_PROMPT` (the WarmPath persona + hard tone rules + ask-type definitions). Functions:
+One module, one shared `SYSTEM_PROMPT` (persona, hard tone rules, ask-type definitions). Functions:
 
 | Function | Purpose | Output |
 |---|---|---|
-| `extractJobFromHtml(pageText)` | Parse a scraped job page | `{ title, company, rawDescription }` (empty strings if not a job posting) |
-| `generateOpportunityBrief(job)` | Summarize role + networking strategy | `{ opportunityBrief, networkingStrategy, extractedRequirements[] }` |
-| `rankContacts(job, contacts[])` | Score every contact for this job in one call | `ScoredContact[]`, sorted desc by `relevanceScore` |
-| `generateMessage(job, contact, warmPath, channel, messageType)` | Write the outreach body | message string |
-| `generateFollowup(job, contact, priorMessages, daysSince)` | Write a nudge | message string |
-| `interpretReply(job, contact, replyText)` | Classify a reply, suggest next step | `{ sentiment, suggestedNextStep }` |
+| `extractJobFromHtml(pageText)` | Parse a scraped job page | `{ title, company, rawDescription }` |
+| `generateOpportunityBrief(job)` | Summarise the role and how to network into it | `{ opportunityBrief, networkingStrategy, extractedRequirements[] }` |
+| `rankContacts(job, contacts[])` | Score the candidate pool in one call | `ScoredContact[]` |
+| `generateMessage(...)` | Write the outreach body | string |
+| `generateFollowup(...)` | Write a short nudge | string |
+| `interpretReply(...)` | Classify a reply and suggest the next step | `{ sentiment, suggestedNextStep }` |
 
-**Prompt caching:** `SYSTEM_PROMPT` is sent with `cache_control: ephemeral` on every call. `rankContacts` additionally caches the job title line and the job description as separate anchors, so scoring many contacts for the same job reuses that prefix. JSON responses are parsed after stripping ``` fences.
+The system prompt is sent with `cache_control: ephemeral` on every call; `rankContacts` also caches the job description as a second anchor so repeated scoring for the same job reuses the prefix. JSON responses are parsed after stripping code fences. See `docs/prompts.md` for the prompt text.
 
-See `docs/prompts.md` for the full prompt text and shapes.
+## Demo mode
 
-## Demo mode (public recruiter demo)
+A seeded template user (`npm run seed:demo`, data in `lib/demo/data.ts`) holds 1,100 synthetic contacts, one target job, and the warm paths and drafts produced by running the real pipeline against it. `GET /demo` (`app/demo/route.ts`) clones that template into a fresh per-visitor user, sets an HMAC-signed HttpOnly cookie (`DEMO_COOKIE_SECRET`), and redirects to the job page. `requireUser()` accepts that cookie only for users on the demo domain, so a forged cookie can at most reach another sandbox. Sandboxes older than 24 hours are deleted on the next demo start.
 
-`proxy.ts` rewrites an anonymous `/` to `app/landing/page.tsx`. `GET /demo` (`app/demo/route.ts`) calls `createDemoSandbox()` in `lib/demo.ts`: it clones the seeded template user (1,100 synthetic contacts from `lib/demo/data.ts`, the Stripe internship job, the WarmPaths and drafts produced by the real pipeline in `scripts/seed-demo.ts`) into a fresh per-visitor user, sets the HMAC-signed `wp_demo` cookie, and redirects to the job page. `requireUser()` accepts that cookie only for users on the `demo.warmpath.local` domain, so a forged cookie can at most reach another sandbox. Stale sandboxes (>24h) are deleted on the next demo start. Live Claude calls still work inside a sandbox (Generate, Re-rank); the seeded drafts are labelled as pre-generated in the workspace.
+Abuse guards (`checkDemoLimit` in `lib/demo.ts`): per sandbox, 8 live drafts and 5 reply interpretations; job creation, URL extraction, brief generation and re-ranking return 403 inside a sandbox; at most 40 new sandboxes per 10 minutes globally. Real users are never limited. Drafts sign off as the demo persona in sandboxes and end on the ask with no signature for real users.
 
 ## Supabase: server vs. client
 
-`lib/supabase.ts` exports `createClient()` (browser — safe in client components) and `createServerSupabase()` (server only — imports `next/headers` *dynamically inside the function* so it never gets bundled into a client component). `proxy.ts` uses `@supabase/ssr` to do the cookie refresh.
-
-## LinkedIn enrichment (dev tool, not deployed)
-
-`npm run linkedin:login` (saves a headed-browser session to `.linkedin-session.json`, gitignored) then `npm run linkedin:enrich` (`scripts/enrich-linkedin.ts` + `lib/linkedin-scrape.ts`): visits up to `LIMIT` (default 40) un-enriched contacts that have a `linkedinUrl`, scrapes profile sections into the `Contact` enrichment fields, sleeps `DELAY_MIN..DELAY_MAX` ms between profiles, and **stops immediately on a login/checkpoint wall** rather than burning contacts. Resumable. Scraper selectors anchor on LinkedIn section ids (`#about`, `#experience`, `#education`, `#skills`, `#volunteering_experience`) and are inherently fragile — the raw scrape is also stored in `linkedinProfile` as a catch-all. Can't run serverless (Playwright) and is intentionally local-only.
+`lib/supabase.ts` exports `createClient()` (browser) and `createServerSupabase()` (server only; it imports `next/headers` inside the function so it is never bundled into a client component). `proxy.ts` uses `@supabase/ssr` for the cookie refresh.
 
 ## Environment
 
-`.env` (loaded by Prisma via `dotenv/config` in `prisma.config.ts`) and `.env.local` (loaded by Next.js) both need `DATABASE_URL`. Required: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `DATABASE_URL` (transaction pooler, port 6543, `?pgbouncer=true`), `DIRECT_URL` (direct, port 5432 — used for `prisma db push`), `ANTHROPIC_API_KEY`. Optional: `APOLLO_API_KEY` (without it `/api/jobs/[id]/discover-contacts` returns 400; everything else works).
+`.env` is loaded by Prisma (`dotenv/config` in `prisma.config.ts`), `.env.local` by Next.js; both need `DATABASE_URL`. Required: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `DATABASE_URL` (transaction pooler), `DIRECT_URL` (direct connection, used for `prisma db push`), `ANTHROPIC_API_KEY`, `DEMO_COOKIE_SECRET`. Optional: `APOLLO_API_KEY`.

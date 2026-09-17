@@ -146,18 +146,12 @@ export default function ContactsDashboard({ contacts }: Props) {
       {withUrl.length > 0 && (
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium">Enrich from LinkedIn profiles</CardTitle>
+            <CardTitle className="text-sm font-medium">Profile enrichment</CardTitle>
             <p className="text-sm text-muted-foreground">
-              Pull each connection&apos;s schools, past companies, and organizations off their LinkedIn profile so ranking can find alumni and shared-affiliation paths. Runs as a local script — {enrichedCount} of {withUrl.length} enriched.
+              Ranking finds alumni and shared-affiliation paths from each connection&apos;s schools, past companies,
+              and organizations. {enrichedCount} of {withUrl.length} connections with a LinkedIn URL have that history on file.
             </p>
           </CardHeader>
-          <CardContent className="space-y-2">
-            <pre className="text-xs bg-muted rounded-md p-3 overflow-x-auto">npm run linkedin:login    # once — log in, press Enter
-npm run linkedin:enrich   # scrapes ~40 profiles per run; run again to continue</pre>
-            <p className="text-xs text-muted-foreground">
-              Drives your real LinkedIn session at a human pace. Re-run periodically; it picks up where it left off.
-            </p>
-          </CardContent>
         </Card>
       )}
 

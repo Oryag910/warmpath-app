@@ -1,41 +1,34 @@
 # Roadmap
 
-Feature sequencing. Not a commitment — a prioritized order of what to build next.
+Prioritised order of what to build next. Not a commitment.
 
-## Shipped (v0)
+## Shipped
 
-- Auth (Supabase, email login, session via proxy.ts)
-- Job ingestion: manual entry + URL scrape → Claude extraction
-- Opportunity brief generation (Claude)
-- Contact management: manual add, LinkedIn CSV import, Apollo contact discovery
-- LinkedIn profile enrichment (local Playwright scripts)
-- Warm-path ranking: batch contact scoring (Claude), dynamic company/school overlap detection
-- Ask-type recommendation + referral readiness scoring
-- Message generation: outreach, followup, referral ask (LinkedIn DM + email)
-- Reply interpretation (Claude → sentiment + next step)
-- Pipeline view: kanban-style WarmPath status board per job
-- Cross-job queue: actionable WarmPaths sorted by score
-- User profile: schools, past companies, organizations (used for overlap detection)
+- Auth (Supabase email login, session refreshed in `proxy.ts`)
+- Job ingestion: manual entry and URL extraction
+- Opportunity brief and networking strategy per job
+- Contacts: manual add, LinkedIn connections CSV import, optional Apollo discovery
+- Three-stage warm-path ranking with explanation chips, funnel and a "considered, not recommended" tier
+- Ask-type recommendation and referral readiness
+- Message generation: outreach, follow-up, referral ask (LinkedIn DM and email)
+- Reply interpretation (sentiment and next step)
+- Pipeline board per job and a cross-job action queue
+- Public recruiter demo: synthetic network, per-visitor sandboxes, usage limits
 
 ## Near-term
 
-- [ ] Message workspace polish — editing, channel switching, copy-to-clipboard UX
-- [ ] Follow-up queue with scheduled nudge dates (`Message.followUpDate`)
-- [ ] Reply loop UX — paste reply → see interpretation → one-click "draft response"
-- [ ] Wire up Apollo when `APOLLO_API_KEY` is available; test contact discovery flow end-to-end
-- [ ] `prisma db push` flow docs / onboarding script for new dev setup
-- [ ] Status lifecycle transitions — UI controls on the pipeline board to move WarmPaths through statuses
+- Sign-off name on the user profile so real users' drafts can close with a signature
+- Follow-up scheduling on the queue (`Message.followUpDate`)
+- Reply loop: interpret a reply, then draft the response in one step
+- Status transitions directly on the pipeline board
+- Pagination on the contacts page for very large networks
 
 ## Later
 
-- Gmail / email client integration for actual send + thread tracking
-- Referral readiness score surfaced in the UI (currently computed, not prominently shown)
-- Recruiter CRM mode — separate persona for recruiter contacts
-- AI networking simulator — practice conversation turns
+- Email client integration for sending and thread tracking
 - Browser extension for one-click job capture
-- Analytics dashboard (conversion through the status funnel)
-- Team / shared workspace
+- Recruiter-side view for hiring contacts
 
-## Do not build (MVP scope)
+## Out of scope
 
-Auto-send messaging, public LinkedIn scraping as a product feature, mobile app, billing, multi-tenant team features.
+Auto-send messaging, scraping as a product feature, mobile app, billing, team workspaces.

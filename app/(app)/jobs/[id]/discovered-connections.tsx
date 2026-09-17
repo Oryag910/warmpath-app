@@ -250,19 +250,10 @@ export default function DiscoveredConnections({ jobId, companySlug, discovered, 
       </CardHeader>
       <CardContent className="space-y-4">
         {items.length === 0 && (
-          <div className="space-y-3">
-            <p className="text-sm text-muted-foreground">No 2nd-degree connections discovered yet.</p>
-            <div>
-              <p className="text-xs text-muted-foreground mb-1">Run this command to discover them:</p>
-              <pre className="text-xs bg-muted rounded-md p-3 overflow-x-auto">
-                {`COMPANY=${companySlug} JOB_ID=${jobId} npm run linkedin:discover`}
-              </pre>
-              <p className="text-xs text-muted-foreground mt-1">
-                Replace <code>{companySlug}</code> with the company&apos;s LinkedIn URL slug
-                (e.g. &ldquo;stripe&rdquo;, &ldquo;palantir-technologies&rdquo;).
-              </p>
-            </div>
-          </div>
+          <p className="text-sm text-muted-foreground">
+            No second-degree connections at {companySlug.replace(/-/g, ' ')} yet. People your contacts can introduce you to
+            appear here once discovered, with the bridge contact and the next step for each.
+          </p>
         )}
 
         {active.length > 0 && (
@@ -386,15 +377,6 @@ export default function DiscoveredConnections({ jobId, companySlug, discovered, 
                 </div>
               )
             })}
-          </div>
-        )}
-
-        {active.length > 0 && (
-          <div className="pt-2 border-t">
-            <p className="text-xs text-muted-foreground mb-1">Re-run to discover more:</p>
-            <pre className="text-xs bg-muted rounded-md p-2 overflow-x-auto">
-              {`COMPANY=${companySlug} JOB_ID=${jobId} npm run linkedin:discover`}
-            </pre>
           </div>
         )}
 
