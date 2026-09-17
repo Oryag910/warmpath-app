@@ -32,6 +32,7 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
 
 # vercel
 .vercel
@@ -42,12 +43,23 @@ next-env.d.ts
 
 /lib/generated/prisma
 
-# claude local settings (personal overrides, not for the team)
-.claude/settings.local.json
+# local-only working notes and AI-assistant configuration (not part of the public project)
+.claude/
+CLAUDE.md
+HANDOFF.md
+AGENTS.md
+docs/agent-teams*.md
 
-# linkedin scrape session
+# experimental local LinkedIn tooling (kept out of the repository; see README)
+scripts/linkedin-login.ts
+scripts/enrich-linkedin.ts
+scripts/discover-connections.ts
+lib/linkedin-scrape.ts
 .linkedin-session.json
 .linkedin-browser/
 debug-*.png
 debug-*.json
 debug-*.html
+
+# scratch
+scripts/_*.tmp.ts
