@@ -43,20 +43,7 @@ next-env.d.ts
 
 /lib/generated/prisma
 
-# local-only working notes and AI-assistant configuration (not part of the public project)
-.claude/
-CLAUDE.md
-HANDOFF.md
-AGENTS.md
-docs/agent-teams*.md
-
-# experimental local LinkedIn tooling (kept out of the repository; see README)
-scripts/linkedin-login.ts
-scripts/enrich-linkedin.ts
-scripts/discover-connections.ts
-lib/linkedin-scrape.ts
-.linkedin-session.json
-.linkedin-browser/
+# local debug output
 debug-*.png
 debug-*.json
 debug-*.html

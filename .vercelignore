@@ -1,16 +1,6 @@
 # Never upload local-only / internal files to Vercel
-.linkedin-browser
-.linkedin-session.json
 debug-*
 docs
-HANDOFF.md
-CLAUDE.md
-AGENTS.md
-.claude
-scripts/linkedin-login.ts
-scripts/enrich-linkedin.ts
-scripts/discover-connections.ts
-lib/linkedin-scrape.ts
 scripts/_*.tmp.ts
 .next
 node_modules

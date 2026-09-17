@@ -26,7 +26,7 @@ function check(cond: unknown, label: string) {
 }
 
 async function main() {
-  // Prefer the installed Chrome (same as the LinkedIn scripts) so no `playwright install` is needed
+  // Prefer the installed Chrome so no `playwright install` is needed
   const browser = await chromium.launch({ headless: true, channel: 'chrome' }).catch(() => chromium.launch({ headless: true }))
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 } })
   const page = await context.newPage()
