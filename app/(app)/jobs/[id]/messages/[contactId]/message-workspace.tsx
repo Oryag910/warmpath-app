@@ -4,25 +4,15 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Separator } from '@/components/ui/separator'
 import { toast } from 'sonner'
 import Link from 'next/link'
-import { PathSignals, tierLabel } from '@/components/warm-path-card'
+import { ASK_LABELS, PathSignals, TierPill } from '@/components/warm-path-card'
 import type { PathSignal } from '@/lib/path-signals'
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyRecord = Record<string, any>
-
-const ASK_LABELS: Record<string, string> = {
-  context_ask: 'Context ask',
-  advice_ask: 'Advice ask',
-  referral_ask: 'Referral ask',
-  intro_ask: 'Intro ask',
-  recruiter_pitch: 'Recruiter pitch',
-}
 
 const ASK_HINTS: Record<string, string> = {
   context_ask: 'Ask for a short chat to learn about the team. Perspective-seeking, not job-seeking.',
@@ -34,10 +24,17 @@ const ASK_HINTS: Record<string, string> = {
 
 const CHANNEL_LABELS: Record<string, string> = { linkedin: 'LinkedIn DM', email: 'Email' }
 const TYPE_LABELS: Record<string, string> = { outreach: 'First outreach', followup: 'Follow-up', referral_ask: 'Referral ask' }
-
-const STATUS_OPTIONS = [
-  'not_started', 'drafted', 'sent', 'replied', 'meeting_set', 'referred', 'closed',
-]
+const STATUS_LABELS: Record<string, string> = {
+  not_started: 'Not started',
+  drafted: 'Drafted',
+  sent: 'Sent',
+  replied: 'Replied',
+  meeting_set: 'Meeting set',
+  referred: 'Referred',
+  closed: 'Closed',
+}
+const STATUS_OPTIONS = Object.keys(STATUS_LABELS)
+const TIE_LABELS: Record<string, string> = { strong: 'Strong tie', medium: 'Medium tie', weak: 'Weak tie' }
 
 interface Props {
   job: AnyRecord
@@ -46,9 +43,11 @@ interface Props {
   messages: AnyRecord[]
   signals?: PathSignal[]
   demo?: boolean
+  /** ISO timestamp; messages created at/after it were generated live in this session (demo only) */
+  liveSince?: string | null
 }
 
-export default function MessageWorkspace({ job, contact, warmPath, messages, signals = [], demo = false }: Props) {
+export default function MessageWorkspace({ job, contact, warmPath, messages, signals = [], demo = false, liveSince = null }: Props) {
   const router = useRouter()
   const [generating, setGenerating] = useState(false)
   const [replyText, setReplyText] = useState('')
@@ -57,6 +56,11 @@ export default function MessageWorkspace({ job, contact, warmPath, messages, sig
   const [status, setStatus] = useState(warmPath.status)
   const [channel, setChannel] = useState<'linkedin' | 'email'>('linkedin')
   const [msgType, setMsgType] = useState<'outreach' | 'followup' | 'referral_ask'>('outreach')
+
+  const liveSinceMs = liveSince ? new Date(liveSince).getTime() : null
+  function isLive(msg: AnyRecord): boolean {
+    return liveSinceMs !== null && new Date(msg.createdAt).getTime() >= liveSinceMs
+  }
 
   async function generateMessage() {
     setGenerating(true)
@@ -71,7 +75,7 @@ export default function MessageWorkspace({ job, contact, warmPath, messages, sig
       setGenerating(false)
       return
     }
-    toast.success('Message generated')
+    toast.success('Draft ready')
     setGenerating(false)
     router.refresh()
   }
@@ -106,7 +110,8 @@ export default function MessageWorkspace({ job, contact, warmPath, messages, sig
     router.refresh()
   }
 
-  async function updateStatus(newStatus: string) {
+  async function updateStatus(newStatus: string | null) {
+    if (!newStatus) return
     await fetch(`/api/warm-paths/${warmPath.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -122,81 +127,88 @@ export default function MessageWorkspace({ job, contact, warmPath, messages, sig
   }
 
   const sentimentColors: Record<string, string> = {
-    positive: 'bg-green-100 text-green-800',
-    neutral: 'bg-yellow-100 text-yellow-800',
-    negative: 'bg-red-100 text-red-800',
+    positive: 'bg-emerald-50 text-emerald-800',
+    neutral: 'bg-amber-50 text-amber-800',
+    negative: 'bg-red-50 text-red-800',
   }
 
+  const askLabel = warmPath.recommendedAsk ? ASK_LABELS[warmPath.recommendedAsk] ?? warmPath.recommendedAsk : null
+
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">{contact.name}</h1>
-          <p className="text-muted-foreground text-sm">
-            {contact.title ?? ''}{contact.company ? ` · ${contact.company}` : ''}
-            {' · '}<span className="capitalize">{contact.relationshipStrength} tie</span>
-            {' · '}<Link href={`/contacts/${contact.id}`} className="underline hover:text-foreground">View profile</Link>
+    <div className="space-y-8">
+      {/* Person */}
+      <header className="flex flex-wrap items-start justify-between gap-4">
+        <div className="min-w-0 space-y-1.5">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <h1 className="text-2xl font-semibold tracking-tight">{contact.name}</h1>
+            <TierPill score={warmPath.relevanceScore} />
+          </div>
+          <p className="text-sm text-muted-foreground">
+            {contact.title ?? ''}{contact.title && contact.company ? ' · ' : ''}{contact.company ?? ''}
+            {contact.relationshipStrength && ` · ${TIE_LABELS[contact.relationshipStrength] ?? contact.relationshipStrength}`}
+            {' · '}
+            <Link href={`/contacts/${contact.id}`} className="underline underline-offset-4 hover:text-foreground">View profile</Link>
           </p>
-          <PathSignals signals={signals} className="mt-2" />
+          <PathSignals signals={signals} className="pt-1" />
         </div>
-        <div className="flex items-center gap-2">
-          {warmPath.recommendedAsk && (
-            <Badge variant="secondary">{ASK_LABELS[warmPath.recommendedAsk] ?? warmPath.recommendedAsk}</Badge>
-          )}
+        <label className="flex items-center gap-2 text-xs text-muted-foreground">
+          <span>Status</span>
           <Select value={status} onValueChange={updateStatus}>
-            <SelectTrigger className="w-36 h-8 text-xs">
-              <SelectValue className="capitalize">{String(status).replace(/_/g, ' ')}</SelectValue>
+            <SelectTrigger className="h-8 w-36 text-xs">
+              <SelectValue>{STATUS_LABELS[String(status)] ?? String(status).replace(/_/g, ' ')}</SelectValue>
             </SelectTrigger>
             <SelectContent>
               {STATUS_OPTIONS.map(s => (
-                <SelectItem key={s} value={s} className="capitalize text-xs">
-                  {s.replace(/_/g, ' ')}
-                </SelectItem>
+                <SelectItem key={s} value={s} className="text-xs">{STATUS_LABELS[s]}</SelectItem>
               ))}
             </SelectContent>
           </Select>
-        </div>
-      </div>
+        </label>
+      </header>
 
-      {/* Why this person */}
+      {/* Why this person → what to ask */}
       {(warmPath.scoreReasoning || warmPath.nextAction) && (
-        <Card className="bg-muted/30">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-              Why this person · {tierLabel(warmPath.relevanceScore)} for {job.title} at {job.company}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {warmPath.scoreReasoning && (
-              <p className="text-sm">{warmPath.scoreReasoning}</p>
-            )}
-            {warmPath.nextAction && (
-              <p className="text-sm font-medium">→ {warmPath.nextAction}</p>
-            )}
-            {warmPath.recommendedAsk && (
-              <p className="text-xs text-muted-foreground">
-                <span className="font-medium text-foreground">{ASK_LABELS[warmPath.recommendedAsk] ?? warmPath.recommendedAsk}:</span>{' '}
+        <section aria-labelledby="why-heading" className="rounded-xl border border-border bg-muted/30 p-5 space-y-4">
+          <div>
+            <h2 id="why-heading" className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Why this person
+            </h2>
+            <p className="mt-0.5 text-xs text-muted-foreground">for {job.title} at {job.company}</p>
+          </div>
+          {warmPath.scoreReasoning && (
+            <p className="text-sm leading-relaxed text-foreground/90">{warmPath.scoreReasoning}</p>
+          )}
+          {warmPath.nextAction && (
+            <div>
+              <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Next move</p>
+              <p className="mt-0.5 text-sm font-medium leading-relaxed">{warmPath.nextAction}</p>
+            </div>
+          )}
+          {askLabel && (
+            <div className="flex flex-wrap items-start gap-x-3 gap-y-1 border-t border-border pt-3">
+              <Badge variant="secondary" className="shrink-0">{askLabel}</Badge>
+              <p className="text-xs leading-relaxed text-muted-foreground">
                 {ASK_HINTS[warmPath.recommendedAsk] ?? ''}
+                {warmPath.referralReadiness && (
+                  <> Referral readiness: <span className="capitalize text-foreground/80">{String(warmPath.referralReadiness).replace(/_/g, ' ')}</span>.</>
+                )}
               </p>
-            )}
-            {warmPath.referralReadiness && (
-              <p className="text-xs text-muted-foreground">
-                Referral readiness: <span className="capitalize">{warmPath.referralReadiness.replace(/_/g, ' ')}</span>
-              </p>
-            )}
-          </CardContent>
-        </Card>
+            </div>
+          )}
+        </section>
       )}
 
-      <Separator />
-
-      {/* Generate message */}
-      <div className="space-y-3">
-        <h2 className="font-medium">Generate message</h2>
-        <div className="flex items-center gap-3">
-          <Select value={channel} onValueChange={v => setChannel(v as 'linkedin' | 'email')}>
-            <SelectTrigger className="w-36">
+      {/* Compose */}
+      <section aria-labelledby="compose-heading" className="space-y-3">
+        <div>
+          <h2 id="compose-heading" className="text-lg font-semibold tracking-tight">Draft outreach</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            WarmPath writes the draft from the reasoning above{askLabel ? ` as a ${askLabel.toLowerCase()}` : ''}. Pick a channel and message type.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+          <Select value={channel} onValueChange={v => v && setChannel(v as 'linkedin' | 'email')}>
+            <SelectTrigger className="w-36" aria-label="Channel">
               <SelectValue>{CHANNEL_LABELS[channel]}</SelectValue>
             </SelectTrigger>
             <SelectContent>
@@ -204,8 +216,8 @@ export default function MessageWorkspace({ job, contact, warmPath, messages, sig
               <SelectItem value="email">Email</SelectItem>
             </SelectContent>
           </Select>
-          <Select value={msgType} onValueChange={v => setMsgType(v as 'outreach' | 'followup' | 'referral_ask')}>
-            <SelectTrigger className="w-44">
+          <Select value={msgType} onValueChange={v => v && setMsgType(v as 'outreach' | 'followup' | 'referral_ask')}>
+            <SelectTrigger className="w-40" aria-label="Message type">
               <SelectValue>{TYPE_LABELS[msgType]}</SelectValue>
             </SelectTrigger>
             <SelectContent>
@@ -215,26 +227,37 @@ export default function MessageWorkspace({ job, contact, warmPath, messages, sig
             </SelectContent>
           </Select>
           <Button onClick={generateMessage} disabled={generating}>
-            {generating ? 'Generating…' : 'Generate'}
+            {generating ? (
+              <>
+                <span className="size-3.5 rounded-full border-2 border-current border-t-transparent animate-spin" aria-hidden />
+                Writing…
+              </>
+            ) : 'Generate'}
           </Button>
         </div>
-      </div>
+        {generating && (
+          <p className="text-xs text-muted-foreground" role="status">
+            Drafting a {CHANNEL_LABELS[channel].toLowerCase()} to {contact.name.split(' ')[0]}. Usually under ten seconds.
+          </p>
+        )}
+      </section>
 
-      {/* Message history */}
+      {/* Drafts */}
       {messages.length > 0 && (
-        <div className="space-y-3">
-          <h2 className="font-medium">Messages</h2>
-          {demo && (
-            <p className="text-xs text-muted-foreground">
-              Drafts below were written by WarmPath&apos;s message generator when this demo network was seeded.
-              Generate above drafts a new one live.
-            </p>
-          )}
+        <section aria-labelledby="drafts-heading" className="space-y-3">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h2 id="drafts-heading" className="text-lg font-semibold tracking-tight">Drafts</h2>
+            {demo && (
+              <p className="text-xs text-muted-foreground">
+                Pre-generated drafts were written when the demo network was seeded. Live drafts are written on the spot.
+              </p>
+            )}
+          </div>
           <Tabs defaultValue={messages[messages.length - 1].id}>
-            <TabsList className="flex-wrap h-auto gap-1">
+            <TabsList className="h-auto flex-wrap gap-1">
               {messages.map((msg, i) => (
                 <TabsTrigger key={msg.id} value={msg.id} className="text-xs">
-                  {i + 1}. {msg.channel === 'linkedin' ? 'LI' : 'Email'} {msg.messageType.replace(/_/g, ' ')}
+                  {i + 1}. {CHANNEL_LABELS[msg.channel] ?? msg.channel} · {TYPE_LABELS[msg.messageType] ?? msg.messageType}
                   {msg.status === 'sent' && ' ✓'}
                 </TabsTrigger>
               ))}
@@ -242,20 +265,23 @@ export default function MessageWorkspace({ job, contact, warmPath, messages, sig
 
             {messages.map(msg => (
               <TabsContent key={msg.id} value={msg.id} className="mt-3 space-y-3">
-                <Card>
-                  <CardHeader className="pb-2">
-                    <div className="flex items-center justify-between">
-                      <CardTitle className="text-xs text-muted-foreground uppercase tracking-wide">
-                        {msg.channel === 'linkedin' ? 'LinkedIn DM' : 'Email'} · {msg.messageType.replace(/_/g, ' ')}
-                      </CardTitle>
+                <article className="rounded-xl border border-border bg-card">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-2.5 sm:px-5">
+                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      {CHANNEL_LABELS[msg.channel] ?? msg.channel} · {TYPE_LABELS[msg.messageType] ?? msg.messageType}
+                    </p>
+                    <div className="flex items-center gap-1.5">
+                      {demo && (
+                        <Badge variant="outline" className="text-xs">{isLive(msg) ? 'Generated live' : 'Pre-generated'}</Badge>
+                      )}
                       <Badge variant={msg.status === 'sent' ? 'default' : 'secondary'} className="text-xs capitalize">
                         {msg.status}
                       </Badge>
                     </div>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    <pre className="text-sm whitespace-pre-wrap font-sans leading-relaxed">{msg.body}</pre>
-                    <div className="flex gap-2">
+                  </div>
+                  <div className="space-y-4 px-4 py-4 sm:px-5">
+                    <pre className="whitespace-pre-wrap break-words font-sans text-sm leading-relaxed">{msg.body}</pre>
+                    <div className="flex flex-wrap gap-2">
                       <Button size="sm" variant="outline" onClick={() => copyToClipboard(msg.body)}>
                         Copy
                       </Button>
@@ -263,40 +289,39 @@ export default function MessageWorkspace({ job, contact, warmPath, messages, sig
                         <Button size="sm" onClick={() => markSent(msg.id)}>Mark sent</Button>
                       )}
                     </div>
-                  </CardContent>
-                </Card>
+                  </div>
+                </article>
 
                 {/* Reply interpreter */}
                 {msg.status === 'sent' && (
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-sm font-medium">Got a reply?</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-3">
-                      <Textarea
-                        value={replyText}
-                        onChange={e => setReplyText(e.target.value)}
-                        placeholder="Paste their reply here and WarmPath will tell you what it means and what to do next…"
-                        className="min-h-24 resize-none text-sm"
-                      />
-                      <Button size="sm" onClick={() => interpretReply(msg.id)} disabled={interpreting || !replyText.trim()}>
-                        {interpreting ? 'Interpreting…' : 'Interpret reply'}
-                      </Button>
-                      {replyAnalysis && (
-                        <div className="space-y-2 pt-1">
-                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium capitalize ${sentimentColors[replyAnalysis.sentiment] ?? ''}`}>
-                            {replyAnalysis.sentiment}
-                          </span>
-                          <p className="text-sm font-medium">{replyAnalysis.suggestedNextStep}</p>
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
+                  <div className="rounded-xl border border-border bg-card px-4 py-4 sm:px-5 space-y-3">
+                    <div>
+                      <h3 className="text-sm font-medium">Got a reply?</h3>
+                      <p className="mt-0.5 text-xs text-muted-foreground">Paste it and WarmPath reads the tone and suggests the next step.</p>
+                    </div>
+                    <Textarea
+                      value={replyText}
+                      onChange={e => setReplyText(e.target.value)}
+                      placeholder={`Paste ${contact.name.split(' ')[0]}'s reply here…`}
+                      className="min-h-24 resize-none text-sm"
+                    />
+                    <Button size="sm" onClick={() => interpretReply(msg.id)} disabled={interpreting || !replyText.trim()}>
+                      {interpreting ? 'Reading…' : 'Interpret reply'}
+                    </Button>
+                    {replyAnalysis && (
+                      <div className="space-y-2 pt-1">
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium capitalize ${sentimentColors[replyAnalysis.sentiment] ?? ''}`}>
+                          {replyAnalysis.sentiment}
+                        </span>
+                        <p className="text-sm font-medium">{replyAnalysis.suggestedNextStep}</p>
+                      </div>
+                    )}
+                  </div>
                 )}
               </TabsContent>
             ))}
           </Tabs>
-        </div>
+        </section>
       )}
     </div>
   )

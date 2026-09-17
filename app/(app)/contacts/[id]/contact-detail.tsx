@@ -9,10 +9,13 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { toast } from 'sonner'
 
 const SOURCE_LABELS: Record<string, string> = {
-  manual: 'Manual',
-  linkedin_csv: 'LinkedIn',
+  manual: 'Added manually',
+  linkedin_csv: 'LinkedIn import',
   apollo: 'Apollo',
+  demo: 'Synthetic contact',
 }
+
+const TIE_LABELS: Record<string, string> = { strong: 'Strong tie', medium: 'Medium tie', weak: 'Weak tie' }
 
 const STATUS_LABELS: Record<string, string> = {
   not_started: 'Not started',
@@ -66,21 +69,23 @@ export default function ContactDetail({ contact: initial, warmPaths }: Props) {
       </div>
 
       {/* Header */}
-      <div className="flex items-start justify-between gap-4">
-        <div className="space-y-1">
-          <h1 className="text-2xl font-semibold">{c.name}</h1>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="min-w-0 space-y-1">
+          <h1 className="text-2xl font-semibold tracking-tight">{c.name}</h1>
           {(c.title || c.company) && (
             <p className="text-muted-foreground">
               {c.title ?? ''}{c.company ? ` · ${c.company}` : ''}
             </p>
           )}
-          {c.headline && <p className="text-sm text-muted-foreground">{c.headline}</p>}
+          {c.headline && c.headline !== `${c.title ?? ''} at ${c.company ?? ''}` && (
+            <p className="text-sm text-muted-foreground">{c.headline}</p>
+          )}
           <div className="flex items-center gap-2 flex-wrap pt-1">
             {c.location && <Badge variant="outline" className="text-xs">{c.location}</Badge>}
-            <Badge variant="outline" className="text-xs capitalize">{c.relationshipStrength}</Badge>
+            <Badge variant="outline" className="text-xs">{TIE_LABELS[c.relationshipStrength] ?? c.relationshipStrength}</Badge>
             <Badge variant="secondary" className="text-xs">{SOURCE_LABELS[c.source] ?? c.source}</Badge>
-            {isEnriched && <Badge variant="outline" className="text-xs">Enriched</Badge>}
-            {c.schoolOverlap && <Badge className="text-xs">School overlap</Badge>}
+            {isEnriched && c.source !== 'demo' && <Badge variant="outline" className="text-xs">Profile enriched</Badge>}
+            {c.schoolOverlap && <Badge className="text-xs">Shared school</Badge>}
           </div>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">

@@ -84,7 +84,7 @@ async function main() {
   check(/Currently at Stripe/.test(t), 'signal chip "Currently at Stripe"')
   check(/Formerly at Stripe/.test(t), 'signal chip "Formerly at Stripe"')
   check(/University Of Michigan alum|Michigan alum/i.test(t), 'signal chip for shared school')
-  check(/weaker signal/i.test(t), 'weaker-signals tier present')
+  check(/considered, not recommended|weaker signal/i.test(t), 'weaker-signals tier present')
   check(!/npm run|linkedin:(login|enrich|discover)|APOLLO_API_KEY/i.test(t), 'no CLI text on job page')
   const names = ['Priya Natarajan', 'Daniel Okafor', 'Elena Rossi', 'Sofia Alvarez']
   const idx = names.map(n => t.indexOf(n))
@@ -92,11 +92,11 @@ async function main() {
   check(!/Rachel Goldberg|Omar Haddad|Nina Petrova/.test(t), 'irrelevant contacts not shown as paths')
   check(!/\bc\d{1,2}\b/.test(t), 'no short contact ids leaked into explanations')
   check(!/Re-rank|Rank my connections/i.test(t), 'live Re-rank is not offered in the demo')
-  check(/production ranking pipeline/i.test(t), 'demo ranking provenance copy shown')
+  check(/same pipeline real users run|production ranking pipeline/i.test(t), 'demo ranking provenance copy shown')
   await snap('job')
 
   console.log('Weaker signals')
-  await page.locator('summary').first().click()
+  await page.locator('summary', { hasText: /not recommended|weaker signal/i }).first().click()
   t = await text()
   check(/Lena Fischer/.test(t), 'school-only contact shown as weak signal after expanding')
   await snap('job-weaker')

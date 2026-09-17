@@ -5,9 +5,6 @@ import { RECOMMEND_THRESHOLD } from '@/lib/ranking'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { buttonVariants } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { Separator } from '@/components/ui/separator'
 import OpportunityBriefLoader from './brief-loader'
 import RankButton from './rank-button'
 import DiscoveredConnections from './discovered-connections'
@@ -60,140 +57,136 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
   const requirements = Array.isArray(job.extractedRequirements)
     ? (job.extractedRequirements as string[])
     : []
+  const ranked = warmPaths.length > 0
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-start justify-between gap-4 flex-wrap">
-        <div>
-          <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
+    <div className="space-y-10">
+      {/* Target job */}
+      <header className="flex flex-wrap items-start justify-between gap-4">
+        <div className="min-w-0">
+          <div className="mb-1 flex items-center gap-2 text-sm text-muted-foreground">
             <Link href="/" className="hover:text-foreground">Jobs</Link>
-            <span>/</span>
-            <span>{job.company}</span>
+            <span aria-hidden>/</span>
+            <span className="truncate">{job.company}</span>
           </div>
-          <h1 className="text-2xl font-semibold">{job.title}</h1>
-          <p className="text-muted-foreground">{job.company}</p>
+          <h1 className="text-2xl font-semibold tracking-tight text-balance">{job.title}</h1>
+          <p className="mt-1 text-base text-muted-foreground">{job.company}</p>
         </div>
         <div className="flex items-center gap-2">
-          <Link href={`/jobs/${id}/contacts`} className={buttonVariants({ variant: 'outline' })}>
+          <Link href={`/jobs/${id}/contacts`} className={buttonVariants({ variant: 'outline', size: 'sm' })}>
             Manage contacts
           </Link>
-          <Link href={`/jobs/${id}/pipeline`} className={buttonVariants({ variant: 'outline' })}>
+          <Link href={`/jobs/${id}/pipeline`} className={buttonVariants({ variant: 'outline', size: 'sm' })}>
             Pipeline
           </Link>
         </div>
-      </div>
+      </header>
 
+      {/* Brief + strategy: context for the ranking below, visually one block */}
       {!job.opportunityBrief ? (
         <OpportunityBriefLoader jobId={id} />
       ) : (
-        <div className="grid gap-4 md:grid-cols-2">
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
-                Opportunity Brief
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm leading-relaxed">{job.opportunityBrief}</p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
-                Networking Strategy
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm leading-relaxed">{job.networkingStrategy}</p>
-            </CardContent>
-          </Card>
-
-          {requirements.length > 0 && (
-            <Card className="md:col-span-2">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
-                  Key Requirements
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex flex-wrap gap-2">
-                  {requirements.map((req, i) => (
-                    <Badge key={i} variant="secondary">{req}</Badge>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          )}
-        </div>
-      )}
-
-      <Separator />
-
-      <div className="flex items-start justify-between gap-4 flex-wrap">
-        <div>
-          <h2 className="text-xl font-semibold">Warm paths</h2>
-          {warmPaths.length === 0 ? (
-            <p className="text-sm text-muted-foreground mt-1">
-              Rank your connections to find the best people to reach out to for this role.
-            </p>
-          ) : (
-            <p className="text-sm text-muted-foreground mt-1">
-              <span className="font-medium text-foreground">{totalContacts.toLocaleString()}</span> connections screened
-              {' → '}
-              <span className="font-medium text-foreground">{warmPaths.length}</span> candidates scored
-              {' → '}
-              <span className="font-medium text-foreground">{recommended.length}</span> recommended
-            </p>
-          )}
-        </div>
-        {demo ? (
-          <p className="text-xs text-muted-foreground max-w-xs text-right">
-            Demo rankings were generated with WarmPath&apos;s production ranking pipeline.
-          </p>
-        ) : (
-          <RankButton jobId={id} hasExistingPaths={warmPaths.length > 0} />
-        )}
-      </div>
-
-      {warmPaths.length > 0 && (
-        <p className="text-xs text-muted-foreground -mt-3">
-          A deterministic pre-filter keeps only connections with company overlap or a real shared
-          affiliation. Those candidates are then scored together in one pass, so each explanation is
-          relative to the rest of the pool. Relationship strength shapes the ask, not the ranking.
-        </p>
-      )}
-
-      {recommended.length > 0 && (
-        <div className="space-y-3">
-          {recommended.map((wp, i) => (
-            <WarmPathCard key={wp.id} rank={i + 1} warmPath={wp} job={job} user={user} />
-          ))}
-        </div>
-      )}
-
-      {warmPaths.length > 0 && recommended.length === 0 && (
-        <div className="border rounded-lg p-8 text-center text-sm text-muted-foreground">
-          No connection has a direct path into {job.company} yet. The weaker signals below explain why.
-        </div>
-      )}
-
-      {weaker.length > 0 && (
-        <details className="group">
-          <summary className="cursor-pointer text-sm font-medium text-muted-foreground hover:text-foreground">
-            {weaker.length} weaker signal{weaker.length === 1 ? '' : 's'} considered but not recommended
-          </summary>
-          <p className="text-xs text-muted-foreground mt-2 mb-3">
-            The pre-filter surfaced these connections for a shared school or organization, but none has employment
-            overlap with {job.company}, so a referral ask would be a cold ask. Worth knowing about, not messaging first.
-          </p>
-          <div className="space-y-2">
-            {weaker.map((wp, i) => (
-              <WarmPathCard key={wp.id} rank={recommended.length + i + 1} warmPath={wp} job={job} user={user} compact />
-            ))}
+        <section aria-labelledby="brief-heading" className="rounded-xl border border-border bg-muted/30">
+          <div className="grid gap-6 p-5 md:grid-cols-2 md:gap-8 md:p-6">
+            <div>
+              <h2 id="brief-heading" className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Opportunity brief
+              </h2>
+              <p className="mt-2 text-sm leading-relaxed text-foreground/90">{job.opportunityBrief}</p>
+            </div>
+            <div>
+              <h2 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Networking strategy
+              </h2>
+              <p className="mt-2 text-sm leading-relaxed text-foreground/90">{job.networkingStrategy}</p>
+            </div>
           </div>
-        </details>
+          {requirements.length > 0 && (
+            <details className="group border-t border-border px-5 py-3 md:px-6">
+              <summary className="cursor-pointer select-none text-xs font-medium uppercase tracking-wide text-muted-foreground hover:text-foreground">
+                Key requirements ({requirements.length})
+              </summary>
+              <ul className="mt-3 grid gap-1.5 text-sm text-foreground/80 md:grid-cols-2 md:gap-x-8">
+                {requirements.map((req, i) => (
+                  <li key={i} className="flex gap-2">
+                    <span aria-hidden className="text-muted-foreground">·</span>
+                    <span>{req}</span>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
+        </section>
       )}
+
+      {/* Warm paths */}
+      <section aria-labelledby="paths-heading" className="space-y-5">
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <h2 id="paths-heading" className="text-xl font-semibold tracking-tight">Warm paths</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {ranked
+                ? 'Who in your network can actually help with this role, and how to ask.'
+                : 'Rank your connections to find the best people to reach out to for this role.'}
+            </p>
+          </div>
+          {!demo && <RankButton jobId={id} hasExistingPaths={ranked} />}
+        </div>
+
+        {ranked && (
+          <div className="rounded-xl border border-border bg-card">
+            <dl className="grid grid-cols-3 divide-x divide-border">
+              <FunnelStat value={totalContacts} label="connections screened" />
+              <FunnelStat value={warmPaths.length} label="candidates scored" />
+              <FunnelStat value={recommended.length} label="recommended" emphasis />
+            </dl>
+            <p className="border-t border-border px-4 py-2.5 text-xs leading-relaxed text-muted-foreground">
+              A deterministic pre-filter keeps only connections with company overlap or a real shared affiliation.
+              Those candidates are scored together in one pass, so each explanation is relative to the rest of the pool.
+              Relationship strength shapes the ask, not the ranking.
+              {demo && ' Demo rankings come from the same pipeline real users run.'}
+            </p>
+          </div>
+        )}
+
+        {recommended.length > 0 && (
+          <ol className="space-y-3">
+            {recommended.map((wp, i) => (
+              <li key={wp.id}>
+                <WarmPathCard rank={i + 1} warmPath={wp} job={job} user={user} />
+              </li>
+            ))}
+          </ol>
+        )}
+
+        {ranked && recommended.length === 0 && (
+          <div className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">
+            No connection has a direct path into {job.company} yet. The weaker signals below explain why.
+          </div>
+        )}
+
+        {weaker.length > 0 && (
+          <details className="group rounded-xl border border-dashed border-border px-4 py-3 sm:px-5">
+            <summary className="flex cursor-pointer select-none flex-wrap items-baseline gap-x-2 text-sm text-muted-foreground hover:text-foreground">
+              <span className="font-medium">
+                {weaker.length} more considered, not recommended
+              </span>
+              <span className="text-xs">— shared school or organization, but no employment overlap with {job.company}</span>
+            </summary>
+            <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
+              These connections cleared the pre-filter on affiliation alone. Without a link to {job.company},
+              a referral ask would be a cold ask, so they are worth knowing about but not messaging first.
+            </p>
+            <ol className="mt-3 space-y-2">
+              {weaker.map((wp, i) => (
+                <li key={wp.id}>
+                  <WarmPathCard rank={recommended.length + i + 1} warmPath={wp} job={job} user={user} compact />
+                </li>
+              ))}
+            </ol>
+          </details>
+        )}
+      </section>
 
       {!demo && (
         <DiscoveredConnections
@@ -205,6 +198,17 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
           warmPathCount={warmPaths.length}
         />
       )}
+    </div>
+  )
+}
+
+function FunnelStat({ value, label, emphasis = false }: { value: number; label: string; emphasis?: boolean }) {
+  return (
+    <div className="flex flex-col items-center px-3 py-4 text-center sm:px-4">
+      <dt className="order-2 mt-1 block text-[11px] leading-tight text-muted-foreground sm:text-xs">{label}</dt>
+      <dd className={`text-2xl font-semibold tabular-nums tracking-tight sm:text-3xl ${emphasis ? '' : 'text-foreground/80'}`}>
+        {value.toLocaleString()}
+      </dd>
     </div>
   )
 }

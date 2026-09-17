@@ -27,20 +27,29 @@ export default async function MessagePage({ params }: { params: Promise<{ id: st
 
   const signals = pathSignals(contact, { company: job.company }, user)
   const demo = isDemoUser(user)
+  // Seeded demo drafts keep the template's timestamps; anything newer than the sandbox itself
+  // was generated live by this visitor. Lets the workspace label the two honestly.
+  const liveSince = demo ? (user as { createdAt?: Date }).createdAt?.toISOString() ?? null : null
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <Link href="/" className="hover:text-foreground">Jobs</Link>
-        <span>/</span>
-        <Link href={`/jobs/${id}`} className="hover:text-foreground">{job.title}</Link>
-        <span>/</span>
-        <Link href={`/jobs/${id}/pipeline`} className="hover:text-foreground">Pipeline</Link>
-        <span>/</span>
-        <span>{contact.name}</span>
-      </div>
+      <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
+        <Link href="/" className="shrink-0 hover:text-foreground">Jobs</Link>
+        <span aria-hidden>/</span>
+        <Link href={`/jobs/${id}`} className="truncate hover:text-foreground">{job.title} at {job.company}</Link>
+        <span aria-hidden>/</span>
+        <span className="shrink-0 truncate text-foreground">{contact.name}</span>
+      </nav>
 
-      <MessageWorkspace job={job} contact={contact} warmPath={warmPath} messages={warmPath.messages} signals={signals} demo={demo} />
+      <MessageWorkspace
+        job={job}
+        contact={contact}
+        warmPath={warmPath}
+        messages={warmPath.messages}
+        signals={signals}
+        demo={demo}
+        liveSince={liveSince}
+      />
     </div>
   )
 }
