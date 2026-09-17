@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
@@ -56,6 +56,10 @@ export default function MessageWorkspace({ job, contact, warmPath, messages, sig
   const [status, setStatus] = useState(warmPath.status)
   const [channel, setChannel] = useState<'linkedin' | 'email'>('linkedin')
   const [msgType, setMsgType] = useState<'outreach' | 'followup' | 'referral_ask'>('outreach')
+  const latestId: string | null = messages.length ? messages[messages.length - 1].id : null
+  const [activeTab, setActiveTab] = useState<string | null>(latestId)
+  // A freshly generated draft arrives via router.refresh(); jump to it so the result is visible
+  useEffect(() => { setActiveTab(latestId) }, [latestId])
 
   const liveSinceMs = liveSince ? new Date(liveSince).getTime() : null
   function isLive(msg: AnyRecord): boolean {
@@ -253,7 +257,7 @@ export default function MessageWorkspace({ job, contact, warmPath, messages, sig
               </p>
             )}
           </div>
-          <Tabs defaultValue={messages[messages.length - 1].id}>
+          <Tabs value={activeTab ?? undefined} onValueChange={v => setActiveTab(String(v))}>
             <TabsList className="h-auto flex-wrap gap-1">
               {messages.map((msg, i) => (
                 <TabsTrigger key={msg.id} value={msg.id} className="text-xs">
